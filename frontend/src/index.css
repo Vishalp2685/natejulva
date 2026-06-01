@@ -358,3 +358,38 @@ button, input, select, textarea {
     grid-template-columns: 1fr;
   }
 }
+
+.mobile-menu-btn {
+  display: none;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--primary-burgundy);
+}
+
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    display: block;
+  }
+
+  .premium-header {
+    flex-wrap: wrap;
+    padding: 1rem;
+  }
+
+  .header-nav {
+    display: none;
+    width: 100%;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .header-nav.mobile-open {
+    display: flex;
+  }
+
+  .header-actions {
+    display: none;
+  }
+}
