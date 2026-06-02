@@ -33,6 +33,7 @@ class CustomUserManager(BaseUserManager):
     def create_superuser(self, mobile_number, first_name, last_name, age, gender, password=None, middle_name=None, **extra_fields):
         extra_fields.setdefault('is_staff', True)
         extra_fields.setdefault('is_superuser', True)
+        extra_fields.setdefault('role', 'admin')
         
         if extra_fields.get('is_staff') is not True:
             raise ValueError('Superuser must have is_staff=True.')
@@ -64,6 +65,7 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=50)
     middle_name = models.CharField(max_length=50, blank=True, null=True)
     last_name = models.CharField(max_length=50)
+    email = models.EmailField(unique=True, blank=True, null=True)
     age = models.PositiveIntegerField()
     
     GENDER_CHOICES = (
@@ -72,6 +74,12 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         ('Other', 'Other'),
     )
     gender = models.CharField(max_length=10, choices=GENDER_CHOICES)
+    
+    ROLE_CHOICES = (
+        ('admin', 'Admin'),
+        ('user', 'User'),
+    )
+    role = models.CharField(max_length=10, choices=ROLE_CHOICES, default='user')
     
     date_joined = models.DateTimeField(auto_now_add=True)
     is_active = models.BooleanField(default=True)
@@ -87,4 +95,4 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         if self.middle_name:
             full += f" {self.middle_name}"
         full += f" {self.last_name}"
-        return f"{full} ({self.mobile_number})"
+        return f"{full} ({self.mobile_number}) - {self.role.upper()}"

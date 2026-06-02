@@ -44,8 +44,23 @@ class UserProfile(models.Model):
     family_type = models.CharField(max_length=15, choices=FAMILY_TYPE_CHOICES, blank=True, null=True)
     profile_photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
 
+    # Verification Fields
+    VERIFICATION_CHOICES = (
+        ('pending', 'Pending'),
+        ('approved', 'Approved'),
+        ('rejected', 'Rejected'),
+    )
+    verification_status = models.CharField(max_length=15, choices=VERIFICATION_CHOICES, default='pending')
+    is_verified = models.BooleanField(default=False)
+    admin_remarks = models.TextField(blank=True, null=True)
+
+    # Premium Subscription Fields
+    is_premium = models.BooleanField(default=False)
+    premium_expiry = models.DateTimeField(blank=True, null=True)
+    payment_status = models.CharField(max_length=20, default='pending')
+
     def __str__(self):
-        return f"Profile of {self.user.first_name} ({self.user.mobile_number})"
+        return f"Profile of {self.user.first_name} ({self.user.mobile_number}) - Verified: {self.is_verified}, Premium: {self.is_premium}"
 
     @property
     def completeness_percentage(self):
