@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     'accounts',
     'profiles',
     'drf_spectacular',
+    
 ]
 
 MIDDLEWARE = [
