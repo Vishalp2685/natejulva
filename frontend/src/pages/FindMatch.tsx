@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { 
@@ -38,9 +39,23 @@ interface PublicProfile {
 export const FindMatch: React.FC = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
+  const { cachedFetch, getCachedData } = useCache();
 
-  const [loading, setLoading] = useState(true);
-  const [profiles, setProfiles] = useState<PublicProfile[]>([]);
+  // Helper to build initial search URL
+  const getInitialSearchUrl = () => {
+    const params = new URLSearchParams();
+    if (user) {
+      const targetGender = user.gender === 'Male' ? 'Female' : user.gender === 'Female' ? 'Male' : '';
+      if (targetGender) params.append('gender', targetGender);
+    }
+    return `http://localhost:8000/api/profiles/search/?${params.toString()}`;
+  };
+
+  const initialUrl = getInitialSearchUrl();
+  const cachedData = getCachedData(initialUrl);
+
+  const [loading, setLoading] = useState(!cachedData);
+  const [profiles, setProfiles] = useState<PublicProfile[]>(cachedData || []);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -62,29 +77,37 @@ export const FindMatch: React.FC = () => {
   }, [token, navigate]);
 
   const fetchMatches = async () => {
-    setLoading(true);
-    try {
-      // Build dynamic query parameters
-      const params = new URLSearchParams();
-      if (religion) params.append('religion', religion);
-      if (caste) params.append('caste', caste);
-      if (city) params.append('city', city);
-      if (workingStatus) params.append('working_status', workingStatus);
-      if (familyType) params.append('family_type', familyType);
-      if (bloodGroup) params.append('blood_group', bloodGroup);
-      
-      // Enforce showing opposite gender
-      if (user) {
-        const targetGender = user.gender === 'Male' ? 'Female' : user.gender === 'Female' ? 'Male' : '';
-        if (targetGender) params.append('gender', targetGender);
-      }
+    // Build dynamic query parameters
+    const params = new URLSearchParams();
+    if (religion) params.append('religion', religion);
+    if (caste) params.append('caste', caste);
+    if (city) params.append('city', city);
+    if (workingStatus) params.append('working_status', workingStatus);
+    if (familyType) params.append('family_type', familyType);
+    if (bloodGroup) params.append('blood_group', bloodGroup);
+    
+    // Enforce showing opposite gender
+    if (user) {
+      const targetGender = user.gender === 'Male' ? 'Female' : user.gender === 'Female' ? 'Male' : '';
+      if (targetGender) params.append('gender', targetGender);
+    }
 
-      const response = await fetch(`http://localhost:8000/api/profiles/search/?${params.toString()}`, {
+    const url = `http://localhost:8000/api/profiles/search/?${params.toString()}`;
+    const cached = getCachedData(url);
+    if (cached) {
+      setProfiles(cached);
+      setLoading(false);
+      return;
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const { data, ok } = await cachedFetch(url, {
         headers: { 'Authorization': `Token ${token}` }
       });
-      const data = await response.json();
       
-      if (response.ok) {
+      if (ok && data) {
         setProfiles(data);
       }
     } catch (err) {
@@ -97,7 +120,7 @@ export const FindMatch: React.FC = () => {
   const handleLike = async (profileId: number, e: React.MouseEvent) => {
     e.stopPropagation(); // Stop from opening the details modal
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/like/', {
+      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/like/', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -105,9 +128,8 @@ export const FindMatch: React.FC = () => {
         },
         body: JSON.stringify({ receiver_id: profileId })
       });
-      const data = await response.json();
       
-      if (response.ok) {
+      if (ok && data) {
         if (data.mutual_match) {
           alert(`Mutual Connection Established! You and this partner are now connected!`);
         } else {
@@ -133,13 +155,19 @@ export const FindMatch: React.FC = () => {
 
   const openProfileDetails = async (userId: number) => {
     setSelectedProfileId(userId);
-    setDetailLoading(true);
+    const url = `http://localhost:8000/api/profiles/${userId}/`;
+    const cached = getCachedData(url);
+    if (cached) {
+      setSelectedProfile(cached);
+      setDetailLoading(false);
+    } else {
+      setDetailLoading(true);
+    }
     try {
-      const response = await fetch(`http://localhost:8000/api/profiles/${userId}/`, {
+      const { data, ok } = await cachedFetch(url, {
         headers: { 'Authorization': `Token ${token}` }
       });
-      const data = await response.json();
-      if (response.ok) {
+      if (ok && data) {
         setSelectedProfile(data);
       }
     } catch (err) {

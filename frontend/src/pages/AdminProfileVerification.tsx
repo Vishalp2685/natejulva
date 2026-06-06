@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
 import { 
-  Check, X, FileText, Image, User, Calendar, MapPin
+  Check, X, Image, User, Calendar, MapPin
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -264,7 +264,6 @@ export const AdminProfileVerification: React.FC = () => {
                         onClick={() => handleVerification(user.id, 'approved')}
                         className="btn btn-primary"
                         style={{
-                          backgroundColor: 'var(--accent-success-text)',
                           background: 'none',
                           border: 'none',
                           backgroundColor: '#137333',
@@ -286,7 +285,6 @@ export const AdminProfileVerification: React.FC = () => {
                         onClick={() => handleVerification(user.id, 'rejected')}
                         className="btn btn-primary"
                         style={{
-                          backgroundColor: 'var(--accent-pink-text)',
                           background: 'none',
                           border: 'none',
                           backgroundColor: '#b23b44',

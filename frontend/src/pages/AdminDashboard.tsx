@@ -4,7 +4,7 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
 import { 
   Users, UserCheck, Clock, UserPlus, 
-  TrendingUp, CircleAlert, CheckCircle, ArrowRight
+  CircleAlert, CheckCircle, ArrowRight
 } from 'lucide-react';
 import axios from 'axios';
 

@@ -3,8 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
 import { 
-  Search, ShieldCheck, ShieldAlert, CreditCard,
-  DollarSign, ChevronLeft, ChevronRight, X, Calendar
+  Search, ChevronLeft, ChevronRight, X, Calendar
 } from 'lucide-react';
 import axios from 'axios';
 

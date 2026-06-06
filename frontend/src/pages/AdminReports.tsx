@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
-import { BarChart, PieChart, TrendingUp, Users } from 'lucide-react';
+import { BarChart, TrendingUp, Users } from 'lucide-react';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
 

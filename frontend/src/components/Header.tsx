@@ -4,7 +4,6 @@ import { useAuth } from '../context/AuthContext';
 import {
   Heart,
   LogOut,
-  Award,
   Menu,
   X,
 } from 'lucide-react';
@@ -97,6 +96,14 @@ export const Header: React.FC = () => {
             </Link>
 
             <Link
+              to="/chats"
+              className={`nav-link ${isActive('/chats')}`}
+              onClick={() => setMobileMenuOpen(false)}
+            >
+              Chats
+            </Link>
+
+            <Link
               to="/profile"
               className={`nav-link ${isActive('/profile')}`}
               onClick={() => setMobileMenuOpen(false)}
@@ -143,17 +150,7 @@ export const Header: React.FC = () => {
               gap: '1rem',
             }}
           >
-            <span
-              className="badge-premium"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.25rem',
-              }}
-            >
-              <Award size={13} />
-              Free Member
-            </span>
+
 
             <span
               style={{

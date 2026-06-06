@@ -96,7 +96,6 @@ def create_user_profile(sender, instance, created, **kwargs):
     if created:
         UserProfile.objects.create(user=instance)
         PartnerPreferences.objects.create(user=instance)
-
 class PartnerPreferences(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='partner_preferences')
     caste = models.CharField(max_length=50, blank=True, null=True)
@@ -108,8 +107,9 @@ class PartnerPreferences(models.Model):
     family_type = models.CharField(max_length=15, blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)  # city or state
     working_status = models.CharField(max_length=30, blank=True, null=True)
-    min_age = models.IntegerField(default=18)
-    max_age = models.IntegerField(default=50)
+
+    min_age = models.PositiveIntegerField(default=18)
+    max_age = models.PositiveIntegerField(default=100)
 
     def __str__(self):
         return f"Preferences of {self.user.first_name} ({self.user.mobile_number})"

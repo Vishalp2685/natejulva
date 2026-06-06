@@ -2,14 +2,18 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
+import { CacheProvider } from './context/CacheContext';
 
 import { Landing } from './pages/Landing';
 import { Register } from './pages/Register';
 import { VerifyOtp } from './pages/VerifyOtp';
 import { Dashboard } from './pages/Dashboard';
+import { Profile } from './pages/Profile';
 import { ProfileEdit } from './pages/ProfileEdit';
 import { FindMatch } from './pages/FindMatch';
 import { LikesMatches } from './pages/LikesMatches';
+import { Chats } from './pages/Chats';
+import { MobileBottomNav } from './components/MobileBottomNav';
 
 // Admin Pages
 import { AdminLogin } from './pages/AdminLogin';
@@ -22,7 +26,14 @@ import { AdminReports } from './pages/AdminReports';
 // Protected Route wrapper component for standard users
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <>{children}</> : <Navigate to="/register?tab=login" />;
+  if (!isAuthenticated) return <Navigate to="/register?tab=login" />;
+  
+  return (
+    <>
+      {children}
+      <MobileBottomNav />
+    </>
+  );
 };
 
 // Protected Route wrapper component for admin users
@@ -65,7 +76,23 @@ function AppRoutes() {
           } 
         />
         <Route 
+          path="/chats" 
+          element={
+            <ProtectedRoute>
+              <Chats />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
           path="/profile" 
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/profile/edit" 
           element={
             <ProtectedRoute>
               <ProfileEdit />
@@ -126,9 +153,11 @@ function AppRoutes() {
 function App() {
   return (
     <AuthProvider>
-      <AdminAuthProvider>
-        <AppRoutes />
-      </AdminAuthProvider>
+      <CacheProvider>
+        <AdminAuthProvider>
+          <AppRoutes />
+        </AdminAuthProvider>
+      </CacheProvider>
     </AuthProvider>
   );
 }
