@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { 
@@ -17,51 +18,57 @@ type SectionKey = 'personal' | 'professional' | 'additional' | 'preferences';
 export const ProfileEdit: React.FC = () => {
   const navigate = useNavigate();
   const { token, user, updateUser } = useAuth();
+  const { cachedFetch, getCachedData } = useCache();
+
+  const cachedProfile = getCachedData('http://localhost:8000/api/profiles/me/');
+  const cachedPrefs = getCachedData('http://localhost:8000/api/profiles/preferences/');
 
   const [activeSection, setActiveSection] = useState<SectionKey>('personal');
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!cachedProfile || !cachedPrefs);
   const [saveLoading, setSaveLoading] = useState(false);
   const [nextLoading, setNextLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
   // Personal Information
-  const [height, setHeight] = useState('');
-  const [religion, setReligion] = useState('');
-  const [caste, setCaste] = useState('');
-  const [maritalStatus, setMaritalStatus] = useState<'Unmarried' | 'Divorced'>('Unmarried');
-  const [bloodGroup, setBloodGroup] = useState('');
-  const [city, setCity] = useState('');
-  const [hometown, setHometown] = useState('');
-  const [currentPlace, setCurrentPlace] = useState('');
+  const [height, setHeight] = useState(cachedProfile?.height || '');
+  const [religion, setReligion] = useState(cachedProfile?.religion || '');
+  const [caste, setCaste] = useState(cachedProfile?.caste || '');
+  const [maritalStatus, setMaritalStatus] = useState<'Unmarried' | 'Divorced'>(cachedProfile?.marital_status || 'Unmarried');
+  const [bloodGroup, setBloodGroup] = useState(cachedProfile?.blood_group || '');
+  const [city, setCity] = useState(cachedProfile?.city || '');
+  const [hometown, setHometown] = useState(cachedProfile?.hometown || '');
+  const [currentPlace, setCurrentPlace] = useState(cachedProfile?.current_place_of_living || '');
 
   // Professional Information
-  const [education, setEducation] = useState('');
-  const [occupation, setOccupation] = useState('');
-  const [workingStatus, setWorkingStatus] = useState<'Employed' | 'Self-employed' | 'Business' | 'Unemployed'>('Employed');
-  const [annualSalary, setAnnualSalary] = useState('');
+  const [education, setEducation] = useState(cachedProfile?.education || '');
+  const [occupation, setOccupation] = useState(cachedProfile?.occupation || '');
+  const [workingStatus, setWorkingStatus] = useState<'Employed' | 'Self-employed' | 'Business' | 'Unemployed'>(cachedProfile?.working_status || 'Employed');
+  const [annualSalary, setAnnualSalary] = useState(cachedProfile?.annual_salary || '');
 
   // Additional Information
-  const [aboutMe, setAboutMe] = useState('');
-  const [familyType, setFamilyType] = useState<'Nuclear' | 'Joint'>('Nuclear');
+  const [aboutMe, setAboutMe] = useState(cachedProfile?.about_me || '');
+  const [familyType, setFamilyType] = useState<'Nuclear' | 'Joint'>(cachedProfile?.family_type || 'Nuclear');
 
   // Partner Preferences
-  const [prefCaste, setPrefCaste] = useState('');
-  const [prefReligion, setPrefReligion] = useState('');
-  const [prefHeight, setPrefHeight] = useState('');
-  const [prefOccupation, setPrefOccupation] = useState('');
-  const [prefSalary, setPrefSalary] = useState('');
-  const [prefBloodGroup, setPrefBloodGroup] = useState('');
-  const [prefFamilyType, setPrefFamilyType] = useState<string>('Nuclear');
-  const [prefLocation, setPrefLocation] = useState('');
-  const [prefWorkingStatus, setPrefWorkingStatus] = useState<string>('Employed');
+  const [prefCaste, setPrefCaste] = useState(cachedPrefs?.caste || '');
+  const [prefReligion, setPrefReligion] = useState(cachedPrefs?.religion || '');
+  const [prefHeight, setPrefHeight] = useState(cachedPrefs?.height || '');
+  const [prefOccupation, setPrefOccupation] = useState(cachedPrefs?.occupation || '');
+  const [prefSalary, setPrefSalary] = useState(cachedPrefs?.annual_salary || '');
+  const [prefBloodGroup, setPrefBloodGroup] = useState(cachedPrefs?.blood_group || '');
+  const [prefFamilyType, setPrefFamilyType] = useState<string>(cachedPrefs?.family_type || 'Nuclear');
+  const [prefLocation, setPrefLocation] = useState(cachedPrefs?.location || '');
+  const [prefWorkingStatus, setPrefWorkingStatus] = useState<string>(cachedPrefs?.working_status || 'Employed');
+  const [prefMinAge, setPrefMinAge] = useState<number>(cachedPrefs?.min_age !== undefined ? cachedPrefs?.min_age : 18);
+  const [prefMaxAge, setPrefMaxAge] = useState<number>(cachedPrefs?.max_age !== undefined ? cachedPrefs?.max_age : 100);
 
   // Photo
   const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
-  const [dbPhotoUrl, setDbPhotoUrl] = useState<string | null>(null);
+  const [dbPhotoUrl, setDbPhotoUrl] = useState<string | null>(cachedProfile?.profile_photo || null);
 
   // Completeness
-  const [completeness, setCompleteness] = useState(0);
+  const [completeness, setCompleteness] = useState(cachedProfile?.completeness_percentage || 0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -77,12 +84,11 @@ export const ProfileEdit: React.FC = () => {
 
   const fetchProfileAndPreferences = async () => {
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/me/', {
+      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
         headers: { Authorization: `Token ${token}` },
       });
-      const data = await response.json();
 
-      if (response.ok) {
+      if (ok && data) {
         setHeight(data.height || '');
         setReligion(data.religion || '');
         setCaste(data.caste || '');
@@ -101,11 +107,10 @@ export const ProfileEdit: React.FC = () => {
         if (data.profile_photo) setDbPhotoUrl(data.profile_photo);
       }
 
-      const prefResponse = await fetch('http://localhost:8000/api/profiles/preferences/', {
+      const { data: prefData, ok: prefOk } = await cachedFetch('http://localhost:8000/api/profiles/preferences/', {
         headers: { Authorization: `Token ${token}` },
       });
-      const prefData = await prefResponse.json();
-      if (prefResponse.ok) {
+      if (prefOk && prefData) {
         setPrefCaste(prefData.caste || '');
         setPrefReligion(prefData.religion || '');
         setPrefHeight(prefData.height || '');
@@ -115,6 +120,8 @@ export const ProfileEdit: React.FC = () => {
         setPrefFamilyType(prefData.family_type || 'Nuclear');
         setPrefLocation(prefData.location || '');
         setPrefWorkingStatus(prefData.working_status || 'Employed');
+        setPrefMinAge(prefData.min_age !== undefined ? prefData.min_age : 18);
+        setPrefMaxAge(prefData.max_age !== undefined ? prefData.max_age : 100);
       }
     } catch (err) {
       console.error('Failed to load profile/preferences details', err);
@@ -186,14 +193,13 @@ export const ProfileEdit: React.FC = () => {
     if (photoFile) formData.append('profile_photo', photoFile);
 
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/me/', {
+      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
         method: 'PUT',
         headers: { Authorization: `Token ${token}` },
         body: formData,
       });
-      const data = await response.json();
 
-      if (response.ok) {
+      if (ok && data) {
         setCompleteness(data.completeness_percentage);
         if (data.profile_photo) setDbPhotoUrl(data.profile_photo);
         if (data.user) updateUser(data.user);
@@ -300,7 +306,7 @@ export const ProfileEdit: React.FC = () => {
 
     if (activeSection === 'preferences') {
       try {
-        const response = await fetch('http://localhost:8000/api/profiles/preferences/', {
+        const { ok } = await cachedFetch('http://localhost:8000/api/profiles/preferences/', {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -316,10 +322,12 @@ export const ProfileEdit: React.FC = () => {
             family_type: prefFamilyType,
             location: prefLocation,
             working_status: prefWorkingStatus,
+            min_age: prefMinAge,
+            max_age: prefMaxAge,
           }),
         });
 
-        if (response.ok) {
+        if (ok) {
           setMessage({ type: 'success', text: 'Partner preferences updated successfully!' });
         } else {
           setMessage({ type: 'error', text: 'Failed to update preferences. Please verify details.' });
@@ -776,6 +784,19 @@ export const ProfileEdit: React.FC = () => {
                       <label className="form-label">Preferred Religion</label>
                       <input type="text" className="form-control" placeholder="e.g. Hindu or Sikh (leave blank for any)"
                         value={prefReligion} onChange={(e) => setPrefReligion(e.target.value)} />
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                      <label className="form-label">Preferred Minimum Age *</label>
+                      <input type="number" className="form-control" min={18} max={100}
+                        value={prefMinAge} onChange={(e) => setPrefMinAge(parseInt(e.target.value) || 18)} />
+                    </div>
+                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
+                      <label className="form-label">Preferred Maximum Age *</label>
+                      <input type="number" className="form-control" min={18} max={100}
+                        value={prefMaxAge} onChange={(e) => setPrefMaxAge(parseInt(e.target.value) || 100)} />
                     </div>
                   </div>
 

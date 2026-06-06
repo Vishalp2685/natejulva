@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { 
   Heart, HeartHandshake, Smile, 
   MapPin, CheckCircle, MessageCircleHeart, Info,
-  ChevronLeft, Send, Clock, Check, CheckCheck, MessageSquare, Sparkles
+  ChevronLeft, Send, Clock, Check, CheckCheck, MessageSquare, Sparkles, Bell
 } from 'lucide-react';
 
 interface PublicProfile {
@@ -50,6 +51,23 @@ interface Conversation {
 export const LikesMatches: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
+  const { cachedFetch } = useCache();
+
+  // Loading states per tab
+  const [loadingMatches, setLoadingMatches] = useState(false);
+  const [loadingSent, setLoadingSent] = useState(false);
+  const [loadingReceived, setLoadingReceived] = useState(false);
+
+  // Tab specific lists
+  const [matchesList, setMatchesList] = useState<Conversation[]>([]);
+  const [sentList, setSentList] = useState<PublicProfile[]>([]);
+  const [receivedList, setReceivedList] = useState<PublicProfile[]>([]);
+
+  // Pull-to-refresh drag states
+  const [dragY, setDragY] = useState(0);
+  const [isDragging, setIsDragging] = useState(false);
+  const startYRef = useRef(0);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [activeTab, setActiveTab] = useState<'matches' | 'received' | 'sent'>('matches');
   const [loading, setLoading] = useState(true);
@@ -66,14 +84,144 @@ export const LikesMatches: React.FC = () => {
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const fetchAllData = async (forceRefreshTab?: 'matches' | 'received' | 'sent') => {
+    if (forceRefreshTab) {
+      if (forceRefreshTab === 'matches') setLoadingMatches(true);
+      if (forceRefreshTab === 'received') setLoadingReceived(true);
+      if (forceRefreshTab === 'sent') setLoadingSent(true);
+    } else {
+      setLoading(true);
+    }
+
+    try {
+      const headers = { 'Authorization': `Token ${token}` };
+
+      const fetchTab = async (tab: 'matches' | 'received' | 'sent', endpoint: string) => {
+        try {
+          const res = await fetch(endpoint, { headers });
+          if (res.ok) {
+            const data = await res.json();
+            sessionStorage.setItem(`likesmatches_${tab}`, JSON.stringify(data));
+            if (tab === 'matches') {
+              setMatchesList(data);
+              setConversations(data);
+            } else if (tab === 'received') {
+              setReceivedList(data);
+              if (activeTab === 'received') setLikedProfiles(data);
+            } else if (tab === 'sent') {
+              setSentList(data);
+              if (activeTab === 'sent') setLikedProfiles(data);
+            }
+          }
+        } catch (err) {
+          console.error(`Failed to fetch ${tab}`, err);
+        }
+      };
+
+      if (forceRefreshTab) {
+        let endpoint = '';
+        if (forceRefreshTab === 'matches') endpoint = 'http://localhost:8000/api/profiles/chat/conversations/';
+        else if (forceRefreshTab === 'received') endpoint = 'http://localhost:8000/api/profiles/likes-received/';
+        else if (forceRefreshTab === 'sent') endpoint = 'http://localhost:8000/api/profiles/likes-sent/';
+        await fetchTab(forceRefreshTab, endpoint);
+      } else {
+        await Promise.all([
+          fetchTab('matches', 'http://localhost:8000/api/profiles/chat/conversations/'),
+          fetchTab('received', 'http://localhost:8000/api/profiles/likes-received/'),
+          fetchTab('sent', 'http://localhost:8000/api/profiles/likes-sent/')
+        ]);
+      }
+    } catch (err) {
+      console.error("Failed to fetch matches data", err);
+    } finally {
+      setLoading(false);
+      setLoadingMatches(false);
+      setLoadingSent(false);
+      setLoadingReceived(false);
+    }
+  };
+
+  const handleTabChange = (tab: 'matches' | 'received' | 'sent') => {
+    setActiveTab(tab);
+    setSuccessMessage(null);
+    setSelectedChatProfile(null);
+
+    if (tab === 'matches') {
+      setConversations(matchesList);
+    } else if (tab === 'received') {
+      setLikedProfiles(receivedList);
+    } else if (tab === 'sent') {
+      setLikedProfiles(sentList);
+    }
+  };
+
+  // Touch Handlers for mobile pull-to-refresh
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const container = containerRef.current;
+    if (container && container.scrollTop === 0) {
+      startYRef.current = e.touches[0].clientY;
+      setIsDragging(true);
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging) return;
+    const currentY = e.touches[0].clientY;
+    const diff = currentY - startYRef.current;
+    if (diff > 0) {
+      const maxDrag = 80;
+      const elasticDrag = Math.min(diff * 0.4, maxDrag);
+      setDragY(elasticDrag);
+      if (diff > 10 && e.cancelable) {
+        e.preventDefault();
+      }
+    } else {
+      setDragY(0);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!isDragging) return;
+    setIsDragging(false);
+    if (dragY >= 40) {
+      fetchAllData(activeTab);
+    }
+    setDragY(0);
+  };
+
   useEffect(() => {
     if (!token) {
       navigate('/register?tab=login');
       return;
     }
-    setSelectedChatProfile(null); // Reset active chat box on tab changes
-    fetchLikesData();
-  }, [token, activeTab, navigate]);
+
+    const cachedMatches = sessionStorage.getItem('likesmatches_matches');
+    const cachedReceived = sessionStorage.getItem('likesmatches_received');
+    const cachedSent = sessionStorage.getItem('likesmatches_sent');
+
+    if (cachedMatches && cachedReceived && cachedSent) {
+      try {
+        const mData = JSON.parse(cachedMatches);
+        const rData = JSON.parse(cachedReceived);
+        const sData = JSON.parse(cachedSent);
+
+        setMatchesList(mData);
+        setReceivedList(rData);
+        setSentList(sData);
+
+        if (activeTab === 'matches') setConversations(mData);
+        else if (activeTab === 'received') setLikedProfiles(rData);
+        else if (activeTab === 'sent') setLikedProfiles(sData);
+
+        setLoading(false);
+        return;
+      } catch (e) {
+        console.error("Error parsing cache", e);
+      }
+    }
+
+    fetchAllData();
+  }, [token]);
 
   // 1. Silent polling loop for matches tab preview list (only when chat box is closed)
   useEffect(() => {
@@ -104,37 +252,6 @@ export const LikesMatches: React.FC = () => {
     }
   }, [messages, selectedChatProfile]);
 
-  const fetchLikesData = async () => {
-    setLoading(true);
-    let endpoint = '';
-    
-    if (activeTab === 'matches') {
-      endpoint = 'http://localhost:8000/api/profiles/chat/conversations/';
-    } else if (activeTab === 'received') {
-      endpoint = 'http://localhost:8000/api/profiles/likes-received/';
-    } else if (activeTab === 'sent') {
-      endpoint = 'http://localhost:8000/api/profiles/likes-sent/';
-    }
-
-    try {
-      const response = await fetch(endpoint, {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      const data = await response.json();
-      if (response.ok) {
-        if (activeTab === 'matches') {
-          setConversations(data);
-        } else {
-          setLikedProfiles(data);
-        }
-      }
-    } catch (err) {
-      console.error("Failed to fetch loves parameters", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const fetchLikesDataSilently = async () => {
     if (!token) return;
     try {
@@ -144,6 +261,8 @@ export const LikesMatches: React.FC = () => {
       const data = await response.json();
       if (response.ok) {
         setConversations(data);
+        setMatchesList(data);
+        sessionStorage.setItem('likesmatches_matches', JSON.stringify(data));
       }
     } catch (err) {
       console.error("Failed to silently load connections list", err);
@@ -176,7 +295,7 @@ export const LikesMatches: React.FC = () => {
     setSendLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/profiles/chat/${selectedChatProfile.user.id}/`, {
+      const { data, ok } = await cachedFetch(`http://localhost:8000/api/profiles/chat/${selectedChatProfile.user.id}/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -185,9 +304,7 @@ export const LikesMatches: React.FC = () => {
         body: JSON.stringify({ content: messageContent })
       });
       
-      const data = await response.json();
-      
-      if (response.ok) {
+      if (ok && data) {
         setMessages(prev => [...prev, data]);
         fetchLikesDataSilently();
       }
@@ -201,7 +318,7 @@ export const LikesMatches: React.FC = () => {
   const handleLikeBack = async (profileId: number, name: string) => {
     setSuccessMessage(null);
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/like/', {
+      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/like/', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -209,12 +326,17 @@ export const LikesMatches: React.FC = () => {
         },
         body: JSON.stringify({ receiver_id: profileId })
       });
-      const data = await response.json();
       
-      if (response.ok) {
+      if (ok && data) {
         if (data.mutual_match) {
           setSuccessMessage(`It's a Connection! You and ${name} are now connected! Go to the 'Mutual Connections' tab to celebrate.`);
-          setLikedProfiles(prev => prev.filter(p => p.user.id !== profileId));
+          
+          const newReceived = receivedList.filter(p => p.user.id !== profileId);
+          setReceivedList(newReceived);
+          setLikedProfiles(newReceived);
+          sessionStorage.setItem('likesmatches_received', JSON.stringify(newReceived));
+          fetchAllData('matches');
+
           alert(`Congratulations! You have connected with ${name}!`);
         }
       }
@@ -228,7 +350,7 @@ export const LikesMatches: React.FC = () => {
     if (!confirmUnmatch) return;
 
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/unmatch/', {
+      const { ok } = await cachedFetch('http://localhost:8000/api/profiles/unmatch/', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -237,10 +359,14 @@ export const LikesMatches: React.FC = () => {
         body: JSON.stringify({ receiver_id: profileId })
       });
       
-      if (response.ok) {
+      if (ok) {
         alert(`You have successfully unmatched with ${name}.`);
         setSelectedChatProfile(null); // Close active chat thread if open
-        fetchLikesData(); // Reload matches list
+        
+        const newMatches = matchesList.filter(c => c.profile.user.id !== profileId);
+        setMatchesList(newMatches);
+        setConversations(newMatches);
+        sessionStorage.setItem('likesmatches_matches', JSON.stringify(newMatches));
       } else {
         alert("Failed to unmatch. Please try again.");
       }
@@ -257,6 +383,275 @@ export const LikesMatches: React.FC = () => {
     const date = new Date(isoString);
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
+
+  
+  const renderCards = (isMobile = false) => {
+    return (
+      <div className={isMobile ? '' : 'grid-cols-3'} style={{ display: isMobile ? 'flex' : undefined, flexDirection: isMobile ? 'column' : undefined, gap: isMobile ? '1.5rem' : '2rem', width: '100%' }}>
+        {activeTab === 'matches' ? (
+              conversations.map((c) => {
+                const profile = c.profile;
+                const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
+                return (
+                  <div 
+                    key={profile.user.id}
+                    className="premium-card animate-fade-in"
+                    style={{ 
+                      padding: 0, 
+                      borderRadius: '24px', 
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      minHeight: '430px'
+                    }}
+                  >
+                    {/* Photo container banner */}
+                    <div style={{ 
+                      height: '160px', 
+                      position: 'relative', 
+                      background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {profile.profile_photo ? (
+                        <img 
+                          src={`http://localhost:8000${profile.profile_photo}`} 
+                          alt={fullName} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        />
+                      ) : (
+                        <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
+                          {getInitials(profile.user.first_name, profile.user.last_name)}
+                        </div>
+                      )}
+
+                      {/* Unread Message count Badge overlay */}
+                      {c.unread_count > 0 && (
+                        <div style={{
+                          position: 'absolute',
+                          top: '1rem',
+                          left: '1rem',
+                          backgroundColor: 'var(--primary-burgundy)',
+                          color: 'var(--white)',
+                          padding: '3px 10px',
+                          borderRadius: '12px',
+                          fontSize: '0.7rem',
+                          fontWeight: 800,
+                          boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
+                          border: '1.5px solid var(--white)'
+                        }}>
+                          {c.unread_count} New Message
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Body Details Info */}
+                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--text-dark)', margin: 0 }}>
+                              {fullName}
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <MapPin size={11} /> {profile.city}
+                            </span>
+                          </div>
+                          <span className="badge-premium" style={{ fontSize: '0.65rem', background: 'var(--accent-success)', color: 'var(--accent-success-text)', border: 'none' }}>
+                            Connected
+                          </span>
+                        </div>
+
+                        <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
+                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
+                            <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Profession</span>
+                          <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {profile.occupation || "Not specified"}
+                          </strong>
+                        </div>
+
+                        {/* Last Message Preview box */}
+                        {c.last_message && (
+                          <div style={{
+                            backgroundColor: 'rgba(128,10,63,0.02)',
+                            borderRadius: '12px',
+                            padding: '0.5rem 0.75rem',
+                            border: '1px solid rgba(128,10,63,0.03)',
+                            marginTop: '0.2rem',
+                            fontSize: '0.78rem'
+                          }}>
+                            <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.1rem' }}>Last Message</span>
+                            <p style={{ margin: 0, color: 'var(--text-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {c.last_message.content}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bottom action buttons */}
+                      <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button 
+                            onClick={() => navigate(`/search`)} 
+                            className="btn btn-outline"
+                            style={{ flex: 1, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
+                          >
+                            <Info size={13} />
+                            Bio
+                          </button>
+                          <button 
+                            onClick={() => {
+                              navigate('/chats', { state: { chatProfile: profile } });
+                            }}
+                            className="btn btn-primary"
+                            style={{ flex: 1.5, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
+                          >
+                            <MessageSquare size={13} fill="#FFF" />
+                            Chat Now
+                          </button>
+                        </div>
+                        <button
+                          onClick={() => handleUnmatch(profile.user.id, fullName)}
+                          className="btn-text"
+                          style={{ fontSize: '0.75rem', color: '#B23B44', marginTop: '0.6rem', width: '100%', textAlign: 'center', fontWeight: 600 }}
+                        >
+                          Unmatch Partner
+                        </button>
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              likedProfiles.map((profile) => {
+                const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
+                return (
+                  <div 
+                    key={profile.user.id}
+                    className="premium-card animate-fade-in"
+                    style={{ 
+                      padding: 0, 
+                      borderRadius: '24px', 
+                      overflow: 'hidden',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      minHeight: '410px'
+                    }}
+                  >
+                    {/* Photo container banner */}
+                    <div style={{ 
+                      height: '160px', 
+                      position: 'relative', 
+                      background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      {profile.profile_photo ? (
+                        <img 
+                          src={`http://localhost:8000${profile.profile_photo}`} 
+                          alt={fullName} 
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                        />
+                      ) : (
+                        <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
+                          {getInitials(profile.user.first_name, profile.user.last_name)}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Body Details Info */}
+                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                          <div>
+                            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--text-dark)', margin: 0 }}>
+                              {fullName}
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <MapPin size={11} /> {profile.city}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
+                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
+                          </div>
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
+                            <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Profession</span>
+                          <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                            {profile.occupation || "Not specified"}
+                          </strong>
+                        </div>
+                      </div>
+
+                      {/* Bottom action buttons */}
+                      <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
+                        
+                        {activeTab === 'received' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', color: '#B23B44', fontWeight: 600, backgroundColor: 'var(--accent-pink)', padding: '0.4rem', borderRadius: '10px' }}>
+                              {profile.user.first_name} requested a connection! Connect back.
+                            </span>
+                            <button 
+                              onClick={() => handleLikeBack(profile.user.id, fullName)}
+                              className="btn btn-primary"
+                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                            >
+                              <HeartHandshake size={14} fill="#FFF" />
+                              Accept Request & Connect
+                            </button>
+                          </div>
+                        )}
+
+                        {activeTab === 'sent' && (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center' }}>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-light)', fontWeight: 500 }}>
+                              Connection request pending...
+                            </span>
+                            <button 
+                              onClick={() => navigate(`/search`)}
+                              className="btn btn-outline"
+                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem' }}
+                            >
+                              View Bio
+                            </button>
+                          </div>
+                        )}
+
+                      </div>
+
+                    </div>
+                  </div>
+                );
+              })
+            )}
+      </div>
+    );
+  };
+
 
   const renderChatBox = () => {
     if (!selectedChatProfile) return null;
@@ -458,7 +853,8 @@ export const LikesMatches: React.FC = () => {
   const isEmpty = activeTab === 'matches' ? conversations.length === 0 : likedProfiles.length === 0;
 
   return (
-    <div className="app-container">
+    <>
+    <div className="app-container desktop-only">
       <Header />
       
       <main className="main-content" style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '3rem 2rem' }}>
@@ -496,84 +892,113 @@ export const LikesMatches: React.FC = () => {
 
         {/* Nav Tabs selections */}
         {!selectedChatProfile && (
-          <div style={{ display: 'flex', gap: '1rem', borderBottom: '1px solid rgba(128, 10, 63, 0.08)', marginBottom: '3rem', paddingBottom: '0.5rem' }}>
-            
-            <button 
-              onClick={() => { setActiveTab('matches'); setSuccessMessage(null); }}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid rgba(128, 10, 63, 0.08)', marginBottom: '3rem', paddingBottom: '0.5rem' }}>
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button 
+                onClick={() => handleTabChange('matches')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '1.1rem',
+                  fontWeight: 700,
+                  color: activeTab === 'matches' ? 'var(--primary-burgundy)' : 'var(--text-light)',
+                  cursor: 'pointer',
+                  padding: '0.75rem 1.25rem',
+                  position: 'relative',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <HeartHandshake size={18} /> Mutual Connections
+                </span>
+                {activeTab === 'matches' && (
+                  <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
+                )}
+              </button>
+
+              <button 
+                onClick={() => handleTabChange('received')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '1.1rem',
+                  fontWeight: 700,
+                  color: activeTab === 'received' ? 'var(--primary-burgundy)' : 'var(--text-light)',
+                  cursor: 'pointer',
+                  padding: '0.75rem 1.25rem',
+                  position: 'relative',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Heart size={18} /> Requests Received
+                </span>
+                {activeTab === 'received' && (
+                  <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
+                )}
+              </button>
+
+              <button 
+                onClick={() => handleTabChange('sent')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontFamily: 'var(--font-display)',
+                  fontSize: '1.1rem',
+                  fontWeight: 700,
+                  color: activeTab === 'sent' ? 'var(--primary-burgundy)' : 'var(--text-light)',
+                  cursor: 'pointer',
+                  padding: '0.75rem 1.25rem',
+                  position: 'relative',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                  <Smile size={18} /> Requests Sent
+                </span>
+                {activeTab === 'sent' && (
+                  <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
+                )}
+              </button>
+            </div>
+
+            {/* Desktop Active Tab Refresh Button */}
+            <button
+              onClick={() => fetchAllData(activeTab)}
+              disabled={loadingMatches || loadingSent || loadingReceived}
               style={{
                 background: 'none',
                 border: 'none',
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.1rem',
-                fontWeight: 700,
-                color: activeTab === 'matches' ? 'var(--primary-burgundy)' : 'var(--text-light)',
+                color: 'var(--primary-burgundy)',
                 cursor: 'pointer',
-                padding: '0.75rem 1.25rem',
-                position: 'relative',
-                transition: 'all 0.3s ease'
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.4rem',
+                fontSize: '0.85rem',
+                fontWeight: 600,
+                opacity: (loadingMatches || loadingSent || loadingReceived) ? 0.5 : 1
               }}
             >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <HeartHandshake size={18} /> Mutual Connections
+              <span style={{
+                display: 'inline-block',
+                animation: (loadingMatches || loadingSent || loadingReceived) ? 'spin 0.8s linear infinite' : 'none'
+              }}>
+                <Sparkles size={14} />
               </span>
-              {activeTab === 'matches' && (
-                <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
-              )}
+              Refresh Tab
             </button>
-
-            <button 
-              onClick={() => { setActiveTab('received'); setSuccessMessage(null); }}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.1rem',
-                fontWeight: 700,
-                color: activeTab === 'received' ? 'var(--primary-burgundy)' : 'var(--text-light)',
-                cursor: 'pointer',
-                padding: '0.75rem 1.25rem',
-                position: 'relative',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Heart size={18} /> Requests Received
-              </span>
-              {activeTab === 'received' && (
-                <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
-              )}
-            </button>
-
-            <button 
-              onClick={() => { setActiveTab('sent'); setSuccessMessage(null); }}
-              style={{
-                background: 'none',
-                border: 'none',
-                fontFamily: 'var(--font-display)',
-                fontSize: '1.1rem',
-                fontWeight: 700,
-                color: activeTab === 'sent' ? 'var(--primary-burgundy)' : 'var(--text-light)',
-                cursor: 'pointer',
-                padding: '0.75rem 1.25rem',
-                position: 'relative',
-                transition: 'all 0.3s ease'
-              }}
-            >
-              <span style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                <Smile size={18} /> Requests Sent
-              </span>
-              {activeTab === 'sent' && (
-                <div style={{ position: 'absolute', bottom: '-9px', left: 0, right: 0, height: '3px', backgroundColor: 'var(--primary-burgundy)', borderRadius: '2px' }}></div>
-              )}
-            </button>
-
           </div>
         )}
 
         {/* LOADING STATE */}
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '6rem', color: 'var(--primary-burgundy)', fontWeight: 600 }}>
-            Loading compatibility lists...
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '6.5rem 2rem', gap: '1rem' }}>
+            <div className="spinner"></div>
+            <div style={{ color: 'var(--primary-burgundy)', fontWeight: 600, fontFamily: 'var(--font-display)', fontSize: '1rem', letterSpacing: '0.02em' }}>
+              {activeTab === 'matches' ? 'Loading Mutual Connections...' : activeTab === 'received' ? 'Loading Requests Received...' : 'Loading Requests Sent...'}
+            </div>
           </div>
         ) : isEmpty ? (
           
@@ -615,276 +1040,126 @@ export const LikesMatches: React.FC = () => {
 
         ) : (
           
-          /* PROFILES CARDS GRID */
-          <div className="grid-cols-3" style={{ gap: '2rem' }}>
-            {activeTab === 'matches' ? (
-              conversations.map((c) => {
-                const profile = c.profile;
-                const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
-                return (
-                  <div 
-                    key={profile.user.id}
-                    className="premium-card animate-fade-in"
-                    style={{ 
-                      padding: 0, 
-                      borderRadius: '24px', 
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minHeight: '430px'
-                    }}
-                  >
-                    {/* Photo container banner */}
-                    <div style={{ 
-                      height: '160px', 
-                      position: 'relative', 
-                      background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      {profile.profile_photo ? (
-                        <img 
-                          src={`http://localhost:8000${profile.profile_photo}`} 
-                          alt={fullName} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                      ) : (
-                        <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
-                          {getInitials(profile.user.first_name, profile.user.last_name)}
-                        </div>
-                      )}
-
-                      {/* Unread Message count Badge overlay */}
-                      {c.unread_count > 0 && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '1rem',
-                          left: '1rem',
-                          backgroundColor: 'var(--primary-burgundy)',
-                          color: 'var(--white)',
-                          padding: '3px 10px',
-                          borderRadius: '12px',
-                          fontSize: '0.7rem',
-                          fontWeight: 800,
-                          boxShadow: '0 4px 10px rgba(0,0,0,0.15)',
-                          border: '1.5px solid var(--white)'
-                        }}>
-                          {c.unread_count} New Message
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Body Details Info */}
-                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--text-dark)', margin: 0 }}>
-                              {fullName}
-                            </h3>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                              <MapPin size={11} /> {profile.city}
-                            </span>
-                          </div>
-                          <span className="badge-premium" style={{ fontSize: '0.65rem', background: 'var(--accent-success)', color: 'var(--accent-success-text)', border: 'none' }}>
-                            Connected
-                          </span>
-                        </div>
-
-                        <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
-                          </div>
-                        </div>
-
-                        <div>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Profession</span>
-                          <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {profile.occupation || "Not specified"}
-                          </strong>
-                        </div>
-
-                        {/* Last Message Preview box */}
-                        {c.last_message && (
-                          <div style={{
-                            backgroundColor: 'rgba(128,10,63,0.02)',
-                            borderRadius: '12px',
-                            padding: '0.5rem 0.75rem',
-                            border: '1px solid rgba(128,10,63,0.03)',
-                            marginTop: '0.2rem',
-                            fontSize: '0.78rem'
-                          }}>
-                            <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.65rem', textTransform: 'uppercase', fontWeight: 600, marginBottom: '0.1rem' }}>Last Message</span>
-                            <p style={{ margin: 0, color: 'var(--text-medium)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                              {c.last_message.content}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Bottom action buttons */}
-                      <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
-                        <div style={{ display: 'flex', gap: '0.5rem' }}>
-                          <button 
-                            onClick={() => navigate(`/search`)} 
-                            className="btn btn-outline"
-                            style={{ flex: 1, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
-                          >
-                            <Info size={13} />
-                            Bio
-                          </button>
-                          <button 
-                            onClick={() => {
-                              setSelectedChatProfile(profile);
-                              fetchMessages(profile.user.id, true);
-                              setConversations(prev => prev.map(conv => conv.profile.user.id === profile.user.id ? { ...conv, unread_count: 0 } : conv));
-                            }}
-                            className="btn btn-primary"
-                            style={{ flex: 1.5, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
-                          >
-                            <MessageSquare size={13} fill="#FFF" />
-                            Chat Now
-                          </button>
-                        </div>
-                        <button
-                          onClick={() => handleUnmatch(profile.user.id, fullName)}
-                          className="btn-text"
-                          style={{ fontSize: '0.75rem', color: '#B23B44', marginTop: '0.6rem', width: '100%', textAlign: 'center', fontWeight: 600 }}
-                        >
-                          Unmatch Partner
-                        </button>
-                      </div>
-
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              likedProfiles.map((profile) => {
-                const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
-                return (
-                  <div 
-                    key={profile.user.id}
-                    className="premium-card animate-fade-in"
-                    style={{ 
-                      padding: 0, 
-                      borderRadius: '24px', 
-                      overflow: 'hidden',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      minHeight: '410px'
-                    }}
-                  >
-                    {/* Photo container banner */}
-                    <div style={{ 
-                      height: '160px', 
-                      position: 'relative', 
-                      background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center'
-                    }}>
-                      {profile.profile_photo ? (
-                        <img 
-                          src={`http://localhost:8000${profile.profile_photo}`} 
-                          alt={fullName} 
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                        />
-                      ) : (
-                        <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
-                          {getInitials(profile.user.first_name, profile.user.last_name)}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Body Details Info */}
-                    <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', flex: 1, justifyContent: 'space-between', fontSize: '0.85rem' }}>
-                      
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                          <div>
-                            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--text-dark)', margin: 0 }}>
-                              {fullName}
-                            </h3>
-                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                              <MapPin size={11} /> {profile.city}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
-                          </div>
-                        </div>
-
-                        <div>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Profession</span>
-                          <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {profile.occupation || "Not specified"}
-                          </strong>
-                        </div>
-                      </div>
-
-                      {/* Bottom action buttons */}
-                      <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
-                        
-                        {activeTab === 'received' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.78rem', color: '#B23B44', fontWeight: 600, backgroundColor: 'var(--accent-pink)', padding: '0.4rem', borderRadius: '10px' }}>
-                              {profile.user.first_name} requested a connection! Connect back.
-                            </span>
-                            <button 
-                              onClick={() => handleLikeBack(profile.user.id, fullName)}
-                              className="btn btn-primary"
-                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-                            >
-                              <HeartHandshake size={14} fill="#FFF" />
-                              Accept Request & Connect
-                            </button>
-                          </div>
-                        )}
-
-                        {activeTab === 'sent' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-light)', fontWeight: 500 }}>
-                              Connection request pending...
-                            </span>
-                            <button 
-                              onClick={() => navigate(`/search`)}
-                              className="btn btn-outline"
-                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem' }}
-                            >
-                              View Bio
-                            </button>
-                          </div>
-                        )}
-
-                      </div>
-
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
+          renderCards(false)
         )}
 
       </main>
 
       <Footer />
     </div>
+
+    {/* MOBILE VIEW */}
+    <div className="mobile-only mobile-dashboard" style={{ background: '#FEF6F0', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      {/* Mobile Header */}
+      <div className="mobile-header" style={{ marginBottom: '1.5rem', padding: '0 0.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ fontSize: '1.4rem', fontWeight: 500, color: '#2B1D24', fontFamily: 'var(--font-serif)' }}>
+          Matches
+        </div>
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ background: '#FCE8E6', padding: '4px 10px', borderRadius: '20px', color: '#8B184F', fontSize: '0.75rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <span>A/文</span> English
+          </div>
+          <div style={{ background: '#FCE8E6', width: '32px', height: '32px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#8B184F' }}>
+            <Bell size={16} />
+          </div>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{ background: 'white', borderRadius: '16px', padding: '4px', display: 'flex', marginBottom: '2rem', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+        <button 
+          onClick={() => handleTabChange('matches')}
+          style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'matches' ? '#FEF0F0' : 'transparent', color: activeTab === 'matches' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'matches' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
+        >
+          Matches ({activeTab === 'matches' ? conversations.length : 0})
+        </button>
+        <button 
+          onClick={() => handleTabChange('sent')}
+          style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'sent' ? '#FEF0F0' : 'transparent', color: activeTab === 'sent' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'sent' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
+        >
+          Sent ({activeTab === 'sent' ? likedProfiles.length : 0})
+        </button>
+        <button 
+          onClick={() => handleTabChange('received')}
+          style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'received' ? '#FEF0F0' : 'transparent', color: activeTab === 'received' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'received' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
+        >
+          Received ({activeTab === 'received' ? likedProfiles.length : 0})
+        </button>
+      </div>
+
+      {/* Content */}
+      <div 
+        ref={containerRef}
+        onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
+        onTouchEnd={handleTouchEnd}
+        style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column', 
+          paddingBottom: '100px', 
+          overflowY: 'auto', 
+          position: 'relative' 
+        }}
+      >
+        {/* Pull-to-refresh Touch Indicator */}
+        {dragY > 0 && (
+          <div style={{
+            height: `${dragY}px`,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            overflow: 'hidden',
+            transition: isDragging ? 'none' : 'height 0.2s ease',
+            color: 'var(--primary-burgundy)',
+            fontSize: '0.8rem',
+            fontWeight: 600,
+            background: 'rgba(128,10,63,0.03)',
+            borderRadius: '12px',
+            marginBottom: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', transform: `rotate(${dragY * 4.5}deg)` }}>
+              <Clock size={16} />
+            </div>
+            <span style={{ marginLeft: '6px' }}>{dragY >= 40 ? 'Release to refresh' : 'Pull down to refresh'}</span>
+          </div>
+        )}
+
+        {/* Tab specific loading state (pull to refresh or tab loading) */}
+        {(activeTab === 'matches' ? loadingMatches : activeTab === 'received' ? loadingReceived : loadingSent) && (
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1.5rem 1rem', gap: '8px', color: 'var(--primary-burgundy)', animation: 'fade-in 0.3s ease' }}>
+            <div style={{
+              width: '20px',
+              height: '20px',
+              border: '2px solid rgba(128,10,63,0.15)',
+              borderTopColor: 'var(--primary-burgundy)',
+              borderRadius: '50%',
+              animation: 'spin 0.8s linear infinite'
+            }}></div>
+            <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>
+              {activeTab === 'matches' ? 'Refreshing Mutual Connections...' : activeTab === 'received' ? 'Refreshing Requests Received...' : 'Refreshing Requests Sent...'}
+            </span>
+          </div>
+        )}
+
+        {loading ? (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', padding: '4rem 1rem' }}>
+            <div className="spinner"></div>
+            <span style={{ color: '#7E7E7E', fontSize: '0.9rem', fontWeight: 500 }}>
+              {activeTab === 'matches' ? 'Loading Connections...' : activeTab === 'received' ? 'Loading Requests Received...' : 'Loading Requests Sent...'}
+            </span>
+          </div>
+        ) : isEmpty ? (
+          <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+            <p style={{ color: '#7E7E7E', fontSize: '1rem' }}>Nothing here yet.</p>
+          </div>
+        ) : selectedChatProfile ? (
+          renderChatBox()
+        ) : (
+          renderCards(true)
+        )}
+      </div>
+    </div>
+    </>
   );
 };

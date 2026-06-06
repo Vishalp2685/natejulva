@@ -2,6 +2,7 @@ from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.db.models import Q
+from django.core.cache import cache
 from .models import UserProfile, PartnerPreferences, ProfileLike, Message
 from .serializers import (
     UserProfileSerializer, 
@@ -25,6 +26,8 @@ class MyProfileView(APIView):
         serializer = UserProfileUpdateSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Invalidate recommendations cache
+            cache.delete(f"recommendations_{request.user.id}")
             updated_profile = UserProfile.objects.get(user=request.user)
             return Response(UserProfileSerializer(updated_profile).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
@@ -42,6 +45,8 @@ class PartnerPreferencesView(APIView):
         serializer = PartnerPreferencesSerializer(prefs, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
+            # Invalidate recommendations cache
+            cache.delete(f"recommendations_{request.user.id}")
             return Response(serializer.data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
@@ -123,6 +128,13 @@ class RecommendationsView(APIView):
 
     def get(self, request):
         user = request.user
+        cache_key = f"recommendations_{user.id}"
+        
+        # Check cache first
+        cached_response = cache.get(cache_key)
+        if cached_response is not None:
+            return Response(cached_response, status=status.HTTP_200_OK)
+            
         profile, created = UserProfile.objects.get_or_create(user=user)
         
         # Enforce 100% profile completeness
@@ -151,36 +163,58 @@ class RecommendationsView(APIView):
             if other_profile.completeness_percentage == 100:
                 complete_candidates.append(other_profile)
                 
-        # Calculate dynamic compatibility scores
+        # Calculate dynamic compatibility scores using a weighted system
         scored_candidates = []
         for cand in complete_candidates:
             score = 0
             max_possible = 0
             
-            # Caste check
-            if prefs.caste:
-                max_possible += 1
-                if prefs.caste.lower() in (cand.caste or '').lower():
-                    score += 1
+            # 1. Critical Preferences (Weight 3)
             # Religion check
             if prefs.religion:
-                max_possible += 1
+                max_possible += 3
                 if prefs.religion.lower() in (cand.religion or '').lower():
-                    score += 1
+                    score += 3
             # Location check
             if prefs.location:
-                max_possible += 1
+                max_possible += 3
                 if (prefs.location.lower() in (cand.city or '').lower()) or (prefs.location.lower() in (cand.hometown or '').lower()):
+                    score += 3
+                    
+            # 2. Important Preferences (Weight 2)
+            # Caste check
+            if prefs.caste:
+                max_possible += 2
+                if prefs.caste.lower() in (cand.caste or '').lower():
+                    score += 2
+            # Working status check
+            if prefs.working_status:
+                max_possible += 2
+                if prefs.working_status.lower() == (cand.working_status or '').lower():
+                    score += 2
+            # Salary check
+            if prefs.annual_salary:
+                max_possible += 2
+                if prefs.annual_salary.lower() in (cand.annual_salary or '').lower():
+                    score += 2
+            # Age range check
+            if prefs.min_age or prefs.max_age:
+                max_possible += 2
+                min_a = prefs.min_age or 18
+                max_a = prefs.max_age or 100
+                if min_a <= cand.user.age <= max_a:
+                    score += 2
+                    
+            # 3. General Preferences (Weight 1)
+            # Height check
+            if prefs.height:
+                max_possible += 1
+                if prefs.height.lower() in (cand.height or '').lower():
                     score += 1
             # Occupation check
             if prefs.occupation:
                 max_possible += 1
                 if prefs.occupation.lower() in (cand.occupation or '').lower():
-                    score += 1
-            # Working status check
-            if prefs.working_status:
-                max_possible += 1
-                if prefs.working_status.lower() == (cand.working_status or '').lower():
                     score += 1
             # Family type check
             if prefs.family_type:
@@ -192,16 +226,6 @@ class RecommendationsView(APIView):
                 max_possible += 1
                 if prefs.blood_group.lower() == (cand.blood_group or '').lower():
                     score += 1
-            # Height check
-            if prefs.height:
-                max_possible += 1
-                if prefs.height.lower() in (cand.height or '').lower():
-                    score += 1
-            # Salary check
-            if prefs.annual_salary:
-                max_possible += 1
-                if prefs.annual_salary.lower() in (cand.annual_salary or '').lower():
-                    score += 1
                     
             match_percentage = int((score / max_possible) * 100) if max_possible > 0 else 100
             scored_candidates.append((cand, match_percentage))
@@ -209,20 +233,32 @@ class RecommendationsView(APIView):
         # Sort by score descending
         scored_candidates.sort(key=lambda x: x[1], reverse=True)
         
-        # Serialize with scores added
+        # Get IDs of users already liked by the current user — exclude from recommendations
+        already_liked_ids = set(
+            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
+        )
+
+        # Calculate dynamic compatibility scores using a weighted system
         results = []
         for cand, match_pct in scored_candidates:
+            # Skip if current user already sent a like
+            if cand.user_id in already_liked_ids:
+                continue
             serialized_data = PublicUserProfileSerializer(cand).data
-            serialized_data['match_percentage'] = match_pct
-            serialized_data['liked_by_me'] = ProfileLike.objects.filter(sender=user, receiver=cand.user).exists()
+            serialized_data['liked_by_me'] = False
             results.append(serialized_data)
             
-        return Response({
+        response_data = {
             "is_complete": True,
             "completeness_percentage": 100,
             "message": "Recommendations loaded successfully.",
-            "results": results
-        }, status=status.HTTP_200_OK)
+            "results": results[:6]
+        }
+        
+        # Cache calculated recommendations for 300 seconds (5 minutes)
+        cache.set(cache_key, response_data, 300)
+        
+        return Response(response_data, status=status.HTTP_200_OK)
 
 class LikeProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
@@ -241,6 +277,10 @@ class LikeProfileView(APIView):
             return Response({"error": "You cannot like your own profile."}, status=status.HTTP_400_BAD_REQUEST)
             
         like, created = ProfileLike.objects.get_or_create(sender=request.user, receiver=receiver)
+        
+        # Invalidate recommendations cache for both sender and receiver
+        cache.delete(f"recommendations_{request.user.id}")
+        cache.delete(f"recommendations_{receiver_id}")
         
         # Check if mutual match
         mutual_match = ProfileLike.objects.filter(sender=receiver, receiver=request.user).exists()
@@ -265,6 +305,10 @@ class UnmatchProfileView(APIView):
             
         # Delete user's outgoing like to this person
         deleted_count, _ = ProfileLike.objects.filter(sender=request.user, receiver=receiver).delete()
+        
+        # Invalidate recommendations cache for both sender and receiver
+        cache.delete(f"recommendations_{request.user.id}")
+        cache.delete(f"recommendations_{receiver_id}")
         
         # Clean up message history for privacy
         Message.objects.filter(

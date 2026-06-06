@@ -133,28 +133,9 @@ export const Register: React.FC = () => {
       <Header />
       
       <main className="main-content" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem' }}>
-        <div style={{
-          display: 'flex',
-          maxWidth: '1000px',
-          width: '100%',
-          backgroundColor: 'var(--white)',
-          borderRadius: '24px',
-          boxShadow: 'var(--card-shadow)',
-          overflow: 'hidden',
-          minHeight: '650px',
-          border: '1px solid rgba(128, 10, 63, 0.03)'
-        }}>
+        <div className="auth-card">
           {/* Left panel quote banner */}
-          <div style={{
-            flex: 1.1,
-            background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #5E062D 100%)',
-            color: 'var(--white)',
-            padding: '3rem',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            position: 'relative'
-          }}>
+          <div className="auth-banner">
             {/* Soft decorative background circles */}
             <div style={{ position: 'absolute', width: '200px', height: '200px', borderRadius: '50%', background: 'rgba(212,163,115,0.15)', top: '-40px', left: '-40px' }}></div>
             <div style={{ position: 'absolute', width: '300px', height: '300px', borderRadius: '50%', background: 'rgba(255,255,255,0.03)', bottom: '-100px', right: '-50px' }}></div>
@@ -182,7 +163,7 @@ export const Register: React.FC = () => {
           </div>
 
           {/* Right panel form content */}
-          <div style={{ flex: 1.2, padding: '3.5rem 3rem', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+          <div className="auth-form-container">
             
             {/* Header selection tabs */}
             <div style={{ display: 'flex', borderBottom: '1px solid rgba(128, 10, 63, 0.08)', marginBottom: '2rem', paddingBottom: '0.5rem' }}>
@@ -260,7 +241,7 @@ export const Register: React.FC = () => {
                 </p>
 
                 {/* Grid for Name Fields */}
-                <div style={{ display: 'flex', gap: '1rem' }}>
+                <div className="auth-flex-row">
                   <div className="form-group">
                     <label className="form-label">First Name *</label>
                     <input 
@@ -296,7 +277,7 @@ export const Register: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'flex', gap: '1rem' }}>
+                <div className="auth-flex-row">
                   <div className="form-group" style={{ flex: 1 }}>
                     <label className="form-label">Age *</label>
                     <input 

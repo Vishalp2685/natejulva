@@ -108,6 +108,8 @@ class PartnerPreferences(models.Model):
     family_type = models.CharField(max_length=15, blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)  # city or state
     working_status = models.CharField(max_length=30, blank=True, null=True)
+    min_age = models.PositiveIntegerField(default=18)
+    max_age = models.PositiveIntegerField(default=100)
 
     def __str__(self):
         return f"Preferences of {self.user.first_name} ({self.user.mobile_number})"

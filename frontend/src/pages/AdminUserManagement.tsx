@@ -4,7 +4,7 @@ import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
 import { 
   Search, Eye, Edit2, Trash2, ShieldAlert, ShieldCheck, 
-  ChevronLeft, ChevronRight, X, UserMinus, Plus
+  ChevronLeft, ChevronRight, X
 } from 'lucide-react';
 import axios from 'axios';
 
@@ -15,6 +15,8 @@ interface ProfileDetails {
   caste: string;
   marital_status: string;
   city: string;
+  hometown?: string;
+  blood_group?: string;
   education: string;
   occupation: string;
   working_status: string;
