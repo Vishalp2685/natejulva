@@ -1,7 +1,8 @@
+from rest_framework.pagination import PageNumberPagination
 from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
-from django.db.models import Q
+from django.db.models import Q, Count
 from django.core.cache import cache
 from .models import UserProfile, PartnerPreferences, ProfileLike, Message
 from .serializers import (
@@ -13,23 +14,46 @@ from .serializers import (
 )
 from accounts.models import CustomUser
 
+# ---------------------------------------------------------------------------
+# Helper: Build a queryset of profiles with 100% completeness (all required
+# fields filled) — used by both Search and Recommendations to avoid the
+# expensive Python‑loop approach.
+# ---------------------------------------------------------------------------
+REQUIRED_PROFILE_FIELDS = [
+    'height', 'religion', 'caste', 'marital_status', 'blood_group',
+    'city', 'hometown', 'current_place_of_living', 'education',
+    'occupation', 'working_status', 'annual_salary', 'about_me',
+    'family_type',
+]
+
+def _complete_profiles_qs(base_qs):
+    """Filters a UserProfile queryset to only those with every required field filled."""
+    qs = base_qs
+    for field in REQUIRED_PROFILE_FIELDS:
+        qs = qs.exclude(**{f'{field}__isnull': True}).exclude(**{field: ''})
+    qs = qs.exclude(profile_photo='').exclude(profile_photo__isnull=True)
+    return qs
+
+
 class MyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        # B4: select_related to avoid lazy-load on nested user serializer
+        profile, created = UserProfile.objects.select_related('user').get_or_create(user=request.user)
         serializer = UserProfileSerializer(profile)
         return Response(serializer.data)
 
     def put(self, request):
-        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        # B4 + B6: select_related; removed redundant re-fetch after save
+        profile, created = UserProfile.objects.select_related('user').get_or_create(user=request.user)
         serializer = UserProfileUpdateSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
             # Invalidate recommendations cache
             cache.delete(f"recommendations_{request.user.id}")
-            updated_profile = UserProfile.objects.get(user=request.user)
-            return Response(UserProfileSerializer(updated_profile).data)
+            profile.refresh_from_db()
+            return Response(UserProfileSerializer(profile).data)
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class PartnerPreferencesView(APIView):
@@ -55,7 +79,8 @@ class PublicProfileDetailsView(APIView):
 
     def get(self, request, pk):
         try:
-            profile = UserProfile.objects.get(user_id=pk)
+            # B4: select_related
+            profile = UserProfile.objects.select_related('user').get(user_id=pk)
             # Fetch if current user has already liked them
             liked = ProfileLike.objects.filter(sender=request.user, receiver_id=pk).exists()
             # Fetch if they have liked the current user
@@ -72,58 +97,73 @@ class PublicProfileDetailsView(APIView):
         except UserProfile.DoesNotExist:
             return Response({"error": "Profile not found."}, status=status.HTTP_404_NOT_FOUND)
 
+
+class SearchPagination(PageNumberPagination):
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+
 class ProfileSearchView(APIView):
+    """B1: All filtering done at the database level with select_related to
+    eliminate Python-loop filtering and N+1 queries. Results are paginated."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        queryset = UserProfile.objects.exclude(user=user)
-        
-        # 1. Filter out incomplete profiles
-        complete_profiles = []
-        for profile in queryset:
-            if profile.completeness_percentage == 100:
-                complete_profiles.append(profile)
-                
-        # 2. Apply query filters
-        caste = request.query_params.get('caste')
-        religion = request.query_params.get('religion')
-        city = request.query_params.get('city')
-        working_status = request.query_params.get('working_status')
-        family_type = request.query_params.get('family_type')
-        blood_group = request.query_params.get('blood_group')
-        occupation = request.query_params.get('occupation')
-        gender = request.query_params.get('gender')
-        
-        filtered = []
-        for profile in complete_profiles:
-            if gender and gender.lower() != (profile.user.gender or '').lower():
-                continue
-            if caste and caste.lower() not in (profile.caste or '').lower():
-                continue
-            if religion and religion.lower() not in (profile.religion or '').lower():
-                continue
-            if city and city.lower() not in (profile.city or '').lower():
-                continue
-            if working_status and working_status.lower() != (profile.working_status or '').lower():
-                continue
-            if family_type and family_type.lower() != (profile.family_type or '').lower():
-                continue
-            if blood_group and blood_group.lower() != (profile.blood_group or '').lower():
-                continue
-            if occupation and occupation.lower() not in (profile.occupation or '').lower():
-                continue
-            filtered.append(profile)
-            
+        # Start with all profiles except the current user, eagerly loading user
+        queryset = UserProfile.objects.exclude(user=user).select_related('user')
+
+        # Database-level completeness filter — replaces the Python loop
+        queryset = _complete_profiles_qs(queryset)
+
+        # Apply query filters at DB level
+        filter_map = {
+            'caste__icontains': request.query_params.get('caste'),
+            'religion__icontains': request.query_params.get('religion'),
+            'city__icontains': request.query_params.get('city'),
+            'working_status__iexact': request.query_params.get('working_status'),
+            'family_type__iexact': request.query_params.get('family_type'),
+            'blood_group__iexact': request.query_params.get('blood_group'),
+            'occupation__icontains': request.query_params.get('occupation'),
+            'user__gender__iexact': request.query_params.get('gender'),
+        }
+        for lookup, value in filter_map.items():
+            if value:
+                queryset = queryset.filter(**{lookup: value})
+
+        # Paginate queryset
+        paginator = SearchPagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+
+        if page is not None:
+            # Pre-fetch liked IDs in ONE query for ONLY the paginated candidates
+            candidate_ids = [cand.user_id for cand in page]
+            liked_ids = set(
+                ProfileLike.objects.filter(sender=user, receiver_id__in=candidate_ids).values_list('receiver_id', flat=True)
+            )
+            results = []
+            for cand in page:
+                serialized_data = PublicUserProfileSerializer(cand).data
+                serialized_data['liked_by_me'] = cand.user_id in liked_ids
+                results.append(serialized_data)
+            return paginator.get_paginated_response(results)
+
+        # Fallback (non-paginated, though paginate_queryset always returns something or raise NotFound if out of range)
+        liked_ids = set(
+            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
+        )
         results = []
-        for cand in filtered:
+        for cand in queryset:
             serialized_data = PublicUserProfileSerializer(cand).data
-            serialized_data['liked_by_me'] = ProfileLike.objects.filter(sender=user, receiver=cand.user).exists()
+            serialized_data['liked_by_me'] = cand.user_id in liked_ids
             results.append(serialized_data)
-            
         return Response(results)
 
 class RecommendationsView(APIView):
+    """B1 + B7: Database-level completeness filter, select_related on user,
+    pre-fetch liked IDs. Scoring loop still runs in Python but on a
+    pre-filtered, pre-joined queryset."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -135,7 +175,8 @@ class RecommendationsView(APIView):
         if cached_response is not None:
             return Response(cached_response, status=status.HTTP_200_OK)
             
-        profile, created = UserProfile.objects.get_or_create(user=user)
+        # B4: select_related
+        profile, created = UserProfile.objects.select_related('user').get_or_create(user=user)
         
         # Enforce 100% profile completeness
         completeness = profile.completeness_percentage
@@ -150,22 +191,28 @@ class RecommendationsView(APIView):
         # Get partner preferences
         prefs, created = PartnerPreferences.objects.get_or_create(user=user)
         
-        # Filter opposite gender and complete profiles
+        # Filter opposite gender
         user_gender = user.gender
         target_gender = 'Female' if user_gender == 'Male' else 'Male' if user_gender == 'Female' else None
         
-        queryset = UserProfile.objects.exclude(user=user)
+        # B1/B7: Database-level filtering + select_related
+        queryset = UserProfile.objects.exclude(user=user).select_related('user')
         if target_gender:
             queryset = queryset.filter(user__gender=target_gender)
+        queryset = _complete_profiles_qs(queryset)
             
-        complete_candidates = []
-        for other_profile in queryset:
-            if other_profile.completeness_percentage == 100:
-                complete_candidates.append(other_profile)
-                
+        # Get IDs of users already liked by the current user — exclude from recommendations
+        already_liked_ids = set(
+            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
+        )
+
         # Calculate dynamic compatibility scores using a weighted system
         scored_candidates = []
-        for cand in complete_candidates:
+        for cand in queryset:
+            # Skip if current user already sent a like
+            if cand.user_id in already_liked_ids:
+                continue
+
             score = 0
             max_possible = 0
             
@@ -232,18 +279,10 @@ class RecommendationsView(APIView):
             
         # Sort by score descending
         scored_candidates.sort(key=lambda x: x[1], reverse=True)
-        
-        # Get IDs of users already liked by the current user — exclude from recommendations
-        already_liked_ids = set(
-            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
-        )
 
-        # Calculate dynamic compatibility scores using a weighted system
+        # Build results (top 6)
         results = []
-        for cand, match_pct in scored_candidates:
-            # Skip if current user already sent a like
-            if cand.user_id in already_liked_ids:
-                continue
+        for cand, match_pct in scored_candidates[:6]:
             serialized_data = PublicUserProfileSerializer(cand).data
             serialized_data['liked_by_me'] = False
             results.append(serialized_data)
@@ -252,7 +291,7 @@ class RecommendationsView(APIView):
             "is_complete": True,
             "completeness_percentage": 100,
             "message": "Recommendations loaded successfully.",
-            "results": results[:6]
+            "results": results
         }
         
         # Cache calculated recommendations for 300 seconds (5 minutes)
@@ -322,37 +361,57 @@ class UnmatchProfileView(APIView):
             return Response({"error": "You are not connected with this user."}, status=status.HTTP_400_BAD_REQUEST)
 
 class LikesSentView(APIView):
+    """B2: Replaced list comprehension N+1 with a single bulk query + select_related."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        likes = ProfileLike.objects.filter(sender=request.user)
-        profiles = [UserProfile.objects.get(user=like.receiver) for like in likes]
+        receiver_ids = ProfileLike.objects.filter(
+            sender=request.user
+        ).values_list('receiver_id', flat=True)
+        profiles = UserProfile.objects.filter(
+            user_id__in=receiver_ids
+        ).select_related('user')
         serializer = PublicUserProfileSerializer(profiles, many=True)
         return Response(serializer.data)
 
 class LikesReceivedView(APIView):
+    """B2: Replaced loop with N+1 .get() and .exists() calls with set operations + bulk query."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        likes = ProfileLike.objects.filter(receiver=request.user)
-        profiles = []
-        for like in likes:
-            liked_back = ProfileLike.objects.filter(sender=request.user, receiver=like.sender).exists()
-            if not liked_back:
-                profiles.append(UserProfile.objects.get(user=like.sender))
-                
+        # All users who liked me
+        sender_ids = set(
+            ProfileLike.objects.filter(receiver=request.user)
+            .values_list('sender_id', flat=True)
+        )
+        # Users I have liked back (to exclude mutual matches)
+        liked_back_ids = set(
+            ProfileLike.objects.filter(sender=request.user, receiver_id__in=sender_ids)
+            .values_list('receiver_id', flat=True)
+        )
+        pending_ids = sender_ids - liked_back_ids
+        profiles = UserProfile.objects.filter(
+            user_id__in=pending_ids
+        ).select_related('user')
         serializer = PublicUserProfileSerializer(profiles, many=True)
         return Response(serializer.data)
 
 class MutualMatchesView(APIView):
+    """B2: Replaced list comprehension N+1 with set intersection + bulk query."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        likes_sent = ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
-        mutual_likes = ProfileLike.objects.filter(sender_id__in=likes_sent, receiver=user)
-        
-        profiles = [UserProfile.objects.get(user=like.sender) for like in mutual_likes]
+        sent_ids = set(
+            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
+        )
+        mutual_sender_ids = set(
+            ProfileLike.objects.filter(sender_id__in=sent_ids, receiver=user)
+            .values_list('sender_id', flat=True)
+        )
+        profiles = UserProfile.objects.filter(
+            user_id__in=mutual_sender_ids
+        ).select_related('user')
         serializer = PublicUserProfileSerializer(profiles, many=True)
         return Response(serializer.data)
 
@@ -361,9 +420,12 @@ class ChatMessagesView(APIView):
 
     def get(self, request, receiver_id):
         user = request.user
-        is_liked = ProfileLike.objects.filter(sender=user, receiver_id=receiver_id).exists()
-        is_liked_back = ProfileLike.objects.filter(sender_id=receiver_id, receiver=user).exists()
-        if not (is_liked and is_liked_back):
+        # B8: Combine two .exists() calls into one .count() check
+        match_count = ProfileLike.objects.filter(
+            Q(sender=user, receiver_id=receiver_id) |
+            Q(sender_id=receiver_id, receiver=user)
+        ).count()
+        if match_count < 2:
             return Response({"error": "Only matched profiles are allowed to chat."}, status=status.HTTP_403_FORBIDDEN)
         
         messages = Message.objects.filter(
@@ -378,9 +440,12 @@ class ChatMessagesView(APIView):
 
     def post(self, request, receiver_id):
         user = request.user
-        is_liked = ProfileLike.objects.filter(sender=user, receiver_id=receiver_id).exists()
-        is_liked_back = ProfileLike.objects.filter(sender_id=receiver_id, receiver=user).exists()
-        if not (is_liked and is_liked_back):
+        # B8: Combine two .exists() calls into one .count() check
+        match_count = ProfileLike.objects.filter(
+            Q(sender=user, receiver_id=receiver_id) |
+            Q(sender_id=receiver_id, receiver=user)
+        ).count()
+        if match_count < 2:
             return Response({"error": "Only matched profiles are allowed to chat."}, status=status.HTTP_403_FORBIDDEN)
             
         content = request.data.get('content')
@@ -397,35 +462,63 @@ class ChatMessagesView(APIView):
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 class ChatConversationsView(APIView):
+    """B3: Replaced per-match N+1 (3 queries/match) with batch operations (~5 queries total)."""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         user = request.user
-        likes_sent = ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
-        mutual_likes = ProfileLike.objects.filter(sender_id__in=likes_sent, receiver=user)
-        
+        # Step 1: Get mutual match partner IDs (2 queries)
+        sent_ids = set(
+            ProfileLike.objects.filter(sender=user).values_list('receiver_id', flat=True)
+        )
+        mutual_partner_ids = list(
+            ProfileLike.objects.filter(sender_id__in=sent_ids, receiver=user)
+            .values_list('sender_id', flat=True)
+        )
+
+        if not mutual_partner_ids:
+            return Response([])
+
+        # Step 2: Batch-fetch all profiles (1 query with select_related)
+        profiles_map = {
+            p.user_id: p
+            for p in UserProfile.objects.filter(user_id__in=mutual_partner_ids)
+                .select_related('user')
+        }
+
+        # Step 3: Batch-fetch last messages — get all relevant messages in one query
+        partner_messages = Message.objects.filter(
+            Q(sender=user, receiver_id__in=mutual_partner_ids) |
+            Q(sender_id__in=mutual_partner_ids, receiver=user)
+        ).order_by('-timestamp')
+
+        last_messages = {}
+        for msg in partner_messages:
+            partner_id = msg.receiver_id if msg.sender_id == user.id else msg.sender_id
+            if partner_id not in last_messages:
+                last_messages[partner_id] = msg
+
+        # Step 4: Batch unread counts in one aggregation query
+        unread_qs = (
+            Message.objects.filter(
+                sender_id__in=mutual_partner_ids, receiver=user, is_read=False
+            )
+            .values('sender_id')
+            .annotate(cnt=Count('id'))
+        )
+        unread_counts = {row['sender_id']: row['cnt'] for row in unread_qs}
+
+        # Step 5: Build response
         conversations = []
-        for like in mutual_likes:
-            partner = like.sender
-            profile = UserProfile.objects.get(user=partner)
-            
-            last_msg = Message.objects.filter(
-                (Q(sender=user) & Q(receiver=partner)) | 
-                (Q(sender=partner) & Q(receiver=user))
-            ).order_by('-timestamp').first()
-            
-            unread_count = Message.objects.filter(
-                sender=partner,
-                receiver=user,
-                is_read=False
-            ).count()
-            
-            serialized_profile = PublicUserProfileSerializer(profile).data
-            
+        for pid in mutual_partner_ids:
+            profile = profiles_map.get(pid)
+            if not profile:
+                continue
+            last_msg = last_messages.get(pid)
             conversations.append({
-                "profile": serialized_profile,
+                "profile": PublicUserProfileSerializer(profile).data,
                 "last_message": MessageSerializer(last_msg).data if last_msg else None,
-                "unread_count": unread_count
+                "unread_count": unread_counts.get(pid, 0)
             })
-            
+
         return Response(conversations)

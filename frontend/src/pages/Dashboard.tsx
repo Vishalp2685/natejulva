@@ -95,7 +95,7 @@ export const Dashboard: React.FC = () => {
     if (sentRequests.has(profileId) || connectLoading) return;
     setConnectLoading(true);
     try {
-      const response = await fetch(`${API_URL}api/profiles/like/`, {
+      const response = await fetch(`${API_URL}/api/profiles/like/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

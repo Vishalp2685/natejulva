@@ -15,6 +15,7 @@ interface CacheContextType {
   hasCachedData: (url: string) => boolean;
   getCachedData: (url: string) => any;
   clearCache: () => void;
+  invalidateKey: (url: string) => void;
 }
 
 const CacheContext = createContext<CacheContextType | undefined>(undefined);
@@ -24,6 +25,10 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
   const clearCache = () => {
     cache.current = {};
+  };
+
+  const invalidateKey = (url: string) => {
+    delete cache.current[url];
   };
 
   const hasCachedData = (url: string): boolean => {
@@ -82,7 +87,7 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   };
 
   return (
-    <CacheContext.Provider value={{ cachedFetch, hasCachedData, getCachedData, clearCache }}>
+    <CacheContext.Provider value={{ cachedFetch, hasCachedData, getCachedData, clearCache, invalidateKey }}>
       {children}
     </CacheContext.Provider>
   );

@@ -94,10 +94,17 @@ WSGI_APPLICATION = 'backend.wsgi.application'
 import dj_database_url
 import os
 
+db_url = os.getenv("DATABASE_URL")
+if not db_url:
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "")
+    db_host = os.getenv("DB_HOST", "localhost")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "postgres")
+    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+
 DATABASES = {
-    "default": dj_database_url.parse(
-        os.getenv("DATABASE_URL")
-    )
+    "default": dj_database_url.parse(db_url)
 }
 
 # Password validation

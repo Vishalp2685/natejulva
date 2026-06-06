@@ -121,6 +121,9 @@ class ProfileLike(models.Model):
 
     class Meta:
         unique_together = ('sender', 'receiver')
+        indexes = [
+            models.Index(fields=['receiver', 'sender']),
+        ]
 
     def __str__(self):
         return f"{self.sender.first_name} liked {self.receiver.first_name}"
@@ -134,6 +137,10 @@ class Message(models.Model):
 
     class Meta:
         ordering = ['timestamp']
+        indexes = [
+            models.Index(fields=['sender', 'receiver', 'timestamp']),
+            models.Index(fields=['receiver', 'is_read']),
+        ]
 
     def __str__(self):
         return f"Message from {self.sender.first_name} to {self.receiver.first_name} at {self.timestamp}"

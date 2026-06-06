@@ -69,6 +69,12 @@ export const Chats: React.FC = () => {
   const [viewingProfile, setViewingProfile] = useState<PublicProfile | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // F8: Track previous message count to only auto-scroll on new messages
+  const prevMessageCount = useRef(0);
+  // F6: Stable scalar dependency for chat polling
+  const selectedPartnerId = selectedChatProfile?.user.id ?? null;
+
+  const [viewportHeight, setViewportHeight] = useState(window.visualViewport ? window.visualViewport.height : window.innerHeight);
 
   useEffect(() => {
     if (location.state?.chatProfile) {
@@ -78,29 +84,98 @@ export const Chats: React.FC = () => {
   }, [location]);
 
   useEffect(() => {
+    if (!window.visualViewport) return;
+    
+    const handleResize = () => {
+      setViewportHeight(window.visualViewport!.height);
+    };
+
+    window.visualViewport.addEventListener('resize', handleResize);
+    window.visualViewport.addEventListener('scroll', handleResize);
+
+    return () => {
+      window.visualViewport!.removeEventListener('resize', handleResize);
+      window.visualViewport!.removeEventListener('scroll', handleResize);
+    };
+  }, []);
+
+  // Scroll to bottom when keyboard opens/closes
+  useEffect(() => {
+    if (selectedChatProfile && messages.length > 0) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [viewportHeight]);
+
+  useEffect(() => {
     if (!token) { navigate('/register?tab=login'); return; }
     if (cachedInitial) { setConversations(cachedInitial); setLoading(false); }
     else fetchConversations();
     fetchMyProfile();
   }, [token, navigate]);
 
+  // F1: Reduced polling interval from 6s to 15s, pauses when tab is hidden
   useEffect(() => {
-    if (!token || selectedChatProfile) return;
-    const interval = setInterval(fetchConversationsSilently, 6000);
-    return () => clearInterval(interval);
-  }, [token, selectedChatProfile]);
+    if (!token || selectedPartnerId) return;
 
-  useEffect(() => {
-    if (!token || !selectedChatProfile) return;
-    fetchMessages(selectedChatProfile.user.id, false);
-    const interval = setInterval(() => fetchMessages(selectedChatProfile.user.id, false), 3500);
-    return () => clearInterval(interval);
-  }, [token, selectedChatProfile]);
+    let interval: ReturnType<typeof setInterval>;
 
+    const startPolling = () => {
+      interval = setInterval(fetchConversationsSilently, 15000);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        fetchConversationsSilently();
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [token, selectedPartnerId]);
+
+  // F1 + F6: Reduced from 3.5s to 8s, uses stable scalar dep, pauses on hidden
   useEffect(() => {
-    if (selectedChatProfile && messages.length > 0) {
+    if (!token || !selectedPartnerId) return;
+    fetchMessages(selectedPartnerId, false);
+
+    let interval: ReturnType<typeof setInterval>;
+
+    const startPolling = () => {
+      interval = setInterval(() => fetchMessages(selectedPartnerId, false), 8000);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        fetchMessages(selectedPartnerId, false);
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [token, selectedPartnerId]);
+
+  // F8: Only scroll when new messages arrive, not on every poll cycle
+  useEffect(() => {
+    if (selectedChatProfile && messages.length > prevMessageCount.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
+    prevMessageCount.current = messages.length;
   }, [messages, selectedChatProfile]);
 
   // Click outside listener for the dropdown menu
@@ -111,15 +186,13 @@ export const Chats: React.FC = () => {
     return () => document.removeEventListener('click', handleOutsideClick);
   }, [menuOpen]);
 
+  // F3: Use cachedFetch instead of raw fetch for own profile
   const fetchMyProfile = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/profiles/me/`, {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      if (res.ok) {
-        const data = await res.json();
-        setMyProfile(data);
-      }
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
+        headers: { 'Authorization': `Token ${token}` },
+      }, 120); // Cache for 2 minutes
+      if (ok && data) setMyProfile(data);
     } catch (err) {
       console.error("Failed to fetch my profile", err);
     }
@@ -133,12 +206,14 @@ export const Chats: React.FC = () => {
     finally { setLoading(false); }
   };
 
+  // F5: Use cachedFetch with short TTL instead of raw fetch for silent polling
   const fetchConversationsSilently = async () => {
     if (!token) return;
     try {
-      const res = await fetch(endpoint, { headers: { 'Authorization': `Token ${token}` } });
-      const data = await res.json();
-      if (res.ok) setConversations(data);
+      const { data, ok } = await cachedFetch(endpoint, {
+        headers: { 'Authorization': `Token ${token}` },
+      }, 10); // Short 10s TTL for polling
+      if (ok && data) setConversations(data);
     } catch (err) { console.error(err); }
   };
 
@@ -562,7 +637,7 @@ export const Chats: React.FC = () => {
 
         {/* Message Input */}
         <form onSubmit={handleSendMessage} style={{ 
-          padding: '8px 16px', 
+          padding: isMobile ? '8px 16px calc(8px + env(safe-area-inset-bottom)) 16px' : '8px 16px', 
           backgroundColor: '#f0f2f5', 
           display: 'flex', 
           gap: '12px', 
@@ -933,7 +1008,7 @@ export const Chats: React.FC = () => {
           backgroundColor: 'white',
           display: 'flex',
           flexDirection: 'column',
-          height: '100vh',
+          height: `${viewportHeight}px`,
           width: '100vw'
         }}>
           {renderChatBox(true)}

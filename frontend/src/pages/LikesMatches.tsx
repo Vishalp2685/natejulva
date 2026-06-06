@@ -52,7 +52,7 @@ interface Conversation {
 export const LikesMatches: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
-  const { cachedFetch } = useCache();
+  const { cachedFetch, invalidateKey } = useCache();
 
   // Loading states per tab
   const [loadingMatches, setLoadingMatches] = useState(false);
@@ -84,6 +84,12 @@ export const LikesMatches: React.FC = () => {
   const [sendLoading, setSendLoading] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  // F8: Track previous message count to only auto-scroll on new messages
+  const prevMessageCount = useRef(0);
+  // F6: Stable scalar dependency for chat polling
+  const selectedPartnerId = selectedChatProfile?.user.id ?? null;
+
+  const [viewportHeight, setViewportHeight] = useState(window.visualViewport ? window.visualViewport.height : window.innerHeight);
 
   const fetchAllData = async (forceRefreshTab?: 'matches' | 'received' | 'sent') => {
     if (forceRefreshTab) {
@@ -99,10 +105,9 @@ export const LikesMatches: React.FC = () => {
 
       const fetchTab = async (tab: 'matches' | 'received' | 'sent', endpoint: string) => {
         try {
-          const res = await fetch(endpoint, { headers });
-          if (res.ok) {
-            const data = await res.json();
-            sessionStorage.setItem(`likesmatches_${tab}`, JSON.stringify(data));
+          const { data, ok } = await cachedFetch(endpoint, { headers });
+          if (ok && data) {
+            // F9: Removed sessionStorage caching — rely on CacheContext
             if (tab === 'matches') {
               setMatchesList(data);
               setConversations(data);
@@ -126,11 +131,12 @@ export const LikesMatches: React.FC = () => {
         else if (forceRefreshTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
         await fetchTab(forceRefreshTab, endpoint);
       } else {
-        await Promise.all([
-          fetchTab('matches', `${API_URL}/api/profiles/chat/conversations/`),
-          fetchTab('received', `${API_URL}/api/profiles/likes-received/`),
-          fetchTab('sent', `${API_URL}/api/profiles/likes-sent/`)
-        ]);
+        // F2: Only fetch the active tab on initial load, not all 3
+        let endpoint = '';
+        if (activeTab === 'matches') endpoint = `${API_URL}/api/profiles/chat/conversations/`;
+        else if (activeTab === 'received') endpoint = `${API_URL}/api/profiles/likes-received/`;
+        else if (activeTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
+        await fetchTab(activeTab, endpoint);
       }
     } catch (err) {
       console.error("Failed to fetch matches data", err);
@@ -142,17 +148,30 @@ export const LikesMatches: React.FC = () => {
     }
   };
 
+  // F2: Lazy-load tab data when switching tabs
   const handleTabChange = (tab: 'matches' | 'received' | 'sent') => {
     setActiveTab(tab);
     setSuccessMessage(null);
     setSelectedChatProfile(null);
 
     if (tab === 'matches') {
-      setConversations(matchesList);
+      if (matchesList.length > 0) {
+        setConversations(matchesList);
+      } else {
+        fetchAllData('matches');
+      }
     } else if (tab === 'received') {
-      setLikedProfiles(receivedList);
+      if (receivedList.length > 0) {
+        setLikedProfiles(receivedList);
+      } else {
+        fetchAllData('received');
+      }
     } else if (tab === 'sent') {
-      setLikedProfiles(sentList);
+      if (sentList.length > 0) {
+        setLikedProfiles(sentList);
+      } else {
+        fetchAllData('sent');
+      }
     }
   };
 
@@ -185,74 +204,118 @@ export const LikesMatches: React.FC = () => {
     if (!isDragging) return;
     setIsDragging(false);
     if (dragY >= 40) {
+      let endpoint = '';
+      if (activeTab === 'matches') endpoint = `${API_URL}/api/profiles/chat/conversations/`;
+      else if (activeTab === 'received') endpoint = `${API_URL}/api/profiles/likes-received/`;
+      else if (activeTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
+      
+      if (endpoint) {
+        invalidateKey(endpoint);
+      }
       fetchAllData(activeTab);
     }
     setDragY(0);
   };
 
+  // F9: Removed sessionStorage caching — just fetch fresh data
   useEffect(() => {
     if (!token) {
       navigate('/register?tab=login');
       return;
     }
-
-    const cachedMatches = sessionStorage.getItem('likesmatches_matches');
-    const cachedReceived = sessionStorage.getItem('likesmatches_received');
-    const cachedSent = sessionStorage.getItem('likesmatches_sent');
-
-    if (cachedMatches && cachedReceived && cachedSent) {
-      try {
-        const mData = JSON.parse(cachedMatches);
-        const rData = JSON.parse(cachedReceived);
-        const sData = JSON.parse(cachedSent);
-
-        setMatchesList(mData);
-        setReceivedList(rData);
-        setSentList(sData);
-
-        if (activeTab === 'matches') setConversations(mData);
-        else if (activeTab === 'received') setLikedProfiles(rData);
-        else if (activeTab === 'sent') setLikedProfiles(sData);
-
-        setLoading(false);
-        return;
-      } catch (e) {
-        console.error("Error parsing cache", e);
-      }
-    }
-
     fetchAllData();
   }, [token]);
 
-  // 1. Silent polling loop for matches tab preview list (only when chat box is closed)
   useEffect(() => {
-    if (!token || activeTab !== 'matches' || selectedChatProfile) return;
-    const interval = setInterval(() => {
-      fetchLikesDataSilently();
-    }, 6000);
-    return () => clearInterval(interval);
-  }, [token, activeTab, selectedChatProfile]);
-
-  // 2. Active thread messages polling loop
-  useEffect(() => {
-    if (!token || !selectedChatProfile) return;
+    if (!window.visualViewport) return;
     
-    fetchMessages(selectedChatProfile.user.id, false);
-    
-    const interval = setInterval(() => {
-      fetchMessages(selectedChatProfile.user.id, false);
-    }, 3500);
+    const handleResize = () => {
+      setViewportHeight(window.visualViewport!.height);
+    };
 
-    return () => clearInterval(interval);
-  }, [token, selectedChatProfile]);
+    window.visualViewport.addEventListener('resize', handleResize);
+    window.visualViewport.addEventListener('scroll', handleResize);
 
-  // 3. Scroll to bottom on message list updates
+    return () => {
+      window.visualViewport!.removeEventListener('resize', handleResize);
+      window.visualViewport!.removeEventListener('scroll', handleResize);
+    };
+  }, []);
+
+  // Scroll to bottom when keyboard opens/closes
   useEffect(() => {
     if (selectedChatProfile && messages.length > 0) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
+  }, [viewportHeight]);
+
+  // F1: Reduced polling from 6s to 15s, pauses when tab hidden
+  useEffect(() => {
+    if (!token || activeTab !== 'matches' || selectedPartnerId) return;
+
+    let interval: ReturnType<typeof setInterval>;
+
+    const startPolling = () => {
+      interval = setInterval(fetchLikesDataSilently, 15000);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        fetchLikesDataSilently();
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [token, activeTab, selectedPartnerId]);
+
+  // F1 + F6: Reduced from 3.5s to 8s, uses stable scalar dep, pauses on hidden
+  useEffect(() => {
+    if (!token || !selectedPartnerId) return;
+    
+    fetchMessages(selectedPartnerId, false);
+    
+    let interval: ReturnType<typeof setInterval>;
+
+    const startPolling = () => {
+      interval = setInterval(() => fetchMessages(selectedPartnerId, false), 8000);
+    };
+
+    const handleVisibility = () => {
+      if (document.hidden) {
+        clearInterval(interval);
+      } else {
+        fetchMessages(selectedPartnerId, false);
+        startPolling();
+      }
+    };
+
+    startPolling();
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [token, selectedPartnerId]);
+
+  // F8: Only scroll when new messages arrive, not on every poll cycle
+  useEffect(() => {
+    if (selectedChatProfile && messages.length > prevMessageCount.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+    prevMessageCount.current = messages.length;
   }, [messages, selectedChatProfile]);
 
+  // F5: Use cachedFetch-compatible approach for silent polling
   const fetchLikesDataSilently = async () => {
     if (!token) return;
     try {
@@ -263,7 +326,6 @@ export const LikesMatches: React.FC = () => {
       if (response.ok) {
         setConversations(data);
         setMatchesList(data);
-        sessionStorage.setItem('likesmatches_matches', JSON.stringify(data));
       }
     } catch (err) {
       console.error("Failed to silently load connections list", err);
@@ -335,7 +397,6 @@ export const LikesMatches: React.FC = () => {
           const newReceived = receivedList.filter(p => p.user.id !== profileId);
           setReceivedList(newReceived);
           setLikedProfiles(newReceived);
-          sessionStorage.setItem('likesmatches_received', JSON.stringify(newReceived));
           fetchAllData('matches');
 
           alert(`Congratulations! You have connected with ${name}!`);
@@ -367,7 +428,6 @@ export const LikesMatches: React.FC = () => {
         const newMatches = matchesList.filter(c => c.profile.user.id !== profileId);
         setMatchesList(newMatches);
         setConversations(newMatches);
-        sessionStorage.setItem('likesmatches_matches', JSON.stringify(newMatches));
       } else {
         alert("Failed to unmatch. Please try again.");
       }
@@ -654,26 +714,26 @@ export const LikesMatches: React.FC = () => {
   };
 
 
-  const renderChatBox = () => {
+  const renderChatBox = (isMobile: boolean = false) => {
     if (!selectedChatProfile) return null;
     const partnerName = `${selectedChatProfile.user.first_name} ${selectedChatProfile.user.last_name}`;
     
     return (
-      <div className="premium-card animate-fade-in" style={{ 
+      <div className={isMobile ? "animate-fade-in" : "premium-card animate-fade-in"} style={{ 
         padding: 0, 
-        borderRadius: '24px', 
+        borderRadius: isMobile ? '0' : '24px', 
         overflow: 'hidden', 
         display: 'flex', 
         flexDirection: 'column',
-        height: '600px',
+        height: isMobile ? '100%' : '600px',
         backgroundColor: 'var(--white)',
-        border: '1px solid rgba(128,10,63,0.03)',
-        boxShadow: 'var(--card-shadow)',
-        marginBottom: '2rem'
+        border: isMobile ? 'none' : '1px solid rgba(128,10,63,0.03)',
+        boxShadow: isMobile ? 'none' : 'var(--card-shadow)',
+        marginBottom: isMobile ? '0' : '2rem'
       }}>
         {/* Chat header */}
         <div style={{
-          padding: '1.25rem 2rem',
+          padding: isMobile ? '10px 16px' : '1.25rem 2rem',
           borderBottom: '1px solid rgba(128,10,63,0.06)',
           backgroundColor: '#FFFDF9',
           display: 'flex',
@@ -812,7 +872,7 @@ export const LikesMatches: React.FC = () => {
 
         {/* Input Form bar */}
         <form onSubmit={handleSendMessage} style={{
-          padding: '1rem 2rem',
+          padding: isMobile ? '10px 16px calc(10px + env(safe-area-inset-bottom)) 16px' : '1rem 2rem',
           borderTop: '1px solid rgba(128,10,63,0.06)',
           backgroundColor: 'var(--white)',
           display: 'flex',
@@ -1155,11 +1215,29 @@ export const LikesMatches: React.FC = () => {
             <p style={{ color: '#7E7E7E', fontSize: '1rem' }}>Nothing here yet.</p>
           </div>
         ) : selectedChatProfile ? (
-          renderChatBox()
+          // On mobile, the active chat is rendered in a fixed viewport-height overlay
+          // to prevent keyboard issues. Returning null here avoids double mounting.
+          null
         ) : (
           renderCards(true)
         )}
       </div>
+
+      {/* On mobile: if a conversation is open, render as a fixed full-screen overlay */}
+      {selectedChatProfile && (
+        <div className="mobile-only" style={{
+          position: 'fixed',
+          inset: 0,
+          zIndex: 2000,
+          backgroundColor: 'white',
+          display: 'flex',
+          flexDirection: 'column',
+          height: `${viewportHeight}px`,
+          width: '100vw'
+        }}>
+          {renderChatBox(true)}
+        </div>
+      )}
     </div>
     </>
   );

@@ -1,11 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { 
-  Heart, MapPin, X, Filter, ShieldClose 
+import {
+  Heart, MapPin, X, Filter, ShieldClose
 } from 'lucide-react';
 import { API_URL } from '../config';
 interface PublicProfile {
@@ -55,7 +55,9 @@ export const FindMatch: React.FC = () => {
   const cachedData = getCachedData(initialUrl);
 
   const [loading, setLoading] = useState(!cachedData);
-  const [profiles, setProfiles] = useState<PublicProfile[]>(cachedData || []);
+  const [profiles, setProfiles] = useState<PublicProfile[]>(cachedData?.results || []);
+  const [nextPageUrl, setNextPageUrl] = useState<string | null>(cachedData?.next || null);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [selectedProfileId, setSelectedProfileId] = useState<number | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
@@ -72,6 +74,8 @@ export const FindMatch: React.FC = () => {
   const [showFilters, setShowFilters] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
+  const observerTargetRef = useRef<HTMLDivElement | null>(null);
+
   useEffect(() => {
     const handleResize = () => {
       setIsMobile(window.innerWidth < 768);
@@ -83,7 +87,7 @@ export const FindMatch: React.FC = () => {
       window.removeEventListener('resize', handleResize);
     };
   }, []);
-  
+
   useEffect(() => {
     if (!token) {
       navigate('/register?tab=login');
@@ -91,6 +95,29 @@ export const FindMatch: React.FC = () => {
     }
     fetchMatches();
   }, [token, navigate]);
+
+  // Infinite Scroll Trigger
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && nextPageUrl && !loadingMore) {
+          fetchMoreMatches();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    const currentTarget = observerTargetRef.current;
+    if (currentTarget) {
+      observer.observe(currentTarget);
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget);
+      }
+    };
+  }, [nextPageUrl, loadingMore, token]);
 
   const fetchMatches = async () => {
     // Build dynamic query parameters
@@ -101,7 +128,7 @@ export const FindMatch: React.FC = () => {
     if (workingStatus) params.append('working_status', workingStatus);
     if (familyType) params.append('family_type', familyType);
     if (bloodGroup) params.append('blood_group', bloodGroup);
-    
+
     // Enforce showing opposite gender
     if (user) {
       const targetGender = user.gender === 'Male' ? 'Female' : user.gender === 'Female' ? 'Male' : '';
@@ -111,7 +138,8 @@ export const FindMatch: React.FC = () => {
     const url = `${API_URL}/api/profiles/search/?${params.toString()}`;
     const cached = getCachedData(url);
     if (cached) {
-      setProfiles(cached);
+      setProfiles(cached.results || []);
+      setNextPageUrl(cached.next || null);
       setLoading(false);
       return;
     } else {
@@ -122,9 +150,10 @@ export const FindMatch: React.FC = () => {
       const { data, ok } = await cachedFetch(url, {
         headers: { 'Authorization': `Token ${token}` }
       });
-      
+
       if (ok && data) {
-        setProfiles(data);
+        setProfiles(data.results || []);
+        setNextPageUrl(data.next || null);
       }
     } catch (err) {
       console.error("Could not fetch compatible matches", err);
@@ -133,25 +162,43 @@ export const FindMatch: React.FC = () => {
     }
   };
 
+  const fetchMoreMatches = async () => {
+    if (!nextPageUrl || loadingMore) return;
+    setLoadingMore(true);
+    try {
+      const { data, ok } = await cachedFetch(nextPageUrl, {
+        headers: { 'Authorization': `Token ${token}` }
+      });
+      if (ok && data) {
+        setProfiles(prev => [...prev, ...(data.results || [])]);
+        setNextPageUrl(data.next || null);
+      }
+    } catch (err) {
+      console.error("Could not fetch more matches", err);
+    } finally {
+      setLoadingMore(false);
+    }
+  };
+
   const handleLike = async (profileId: number, e: React.MouseEvent) => {
     e.stopPropagation(); // Stop from opening the details modal
     try {
       const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/like/`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${token}` 
+          'Authorization': `Token ${token}`
         },
         body: JSON.stringify({ receiver_id: profileId })
       });
-      
+
       if (ok && data) {
         if (data.mutual_match) {
           alert(`Mutual Connection Established! You and this partner are now connected!`);
         } else {
           alert("Connection request sent successfully!");
         }
-        
+
         // Refresh profiles to update like button status
         setProfiles(prev => prev.map(p => {
           if (p.user.id === profileId) {
@@ -159,7 +206,7 @@ export const FindMatch: React.FC = () => {
           }
           return p;
         }));
-        
+
         if (selectedProfile && selectedProfile.user.id === profileId) {
           setSelectedProfile(prev => prev ? { ...prev, liked_by_me: true } : null);
         }
@@ -218,9 +265,9 @@ export const FindMatch: React.FC = () => {
   return (
     <div className="app-container">
       <Header />
-      
+
       <main className="main-content" style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '3rem 2rem' }}>
-        
+
         <div style={{ marginBottom: '2.5rem' }}>
           <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', color: 'var(--primary-burgundy)', fontWeight: 700 }}>
             Find prospective partners
@@ -256,7 +303,7 @@ export const FindMatch: React.FC = () => {
         )}
 
         <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
-          
+
           {/* LEFT FILTER PANEL */}
           {(!isMobile || showFilters) && (
             <div
@@ -297,9 +344,9 @@ export const FindMatch: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Religion</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
+                    <input
+                      type="text"
+                      className="form-control"
                       placeholder="e.g. Hindu, Sikh"
                       value={religion}
                       onChange={(e) => setReligion(e.target.value)}
@@ -308,9 +355,9 @@ export const FindMatch: React.FC = () => {
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Caste</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
+                    <input
+                      type="text"
+                      className="form-control"
                       placeholder="e.g. Brahmin, Gujarati"
                       value={caste}
                       onChange={(e) => setCaste(e.target.value)}
@@ -319,9 +366,9 @@ export const FindMatch: React.FC = () => {
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">City</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
+                    <input
+                      type="text"
+                      className="form-control"
                       placeholder="e.g. Mumbai, Pune"
                       value={city}
                       onChange={(e) => setCity(e.target.value)}
@@ -330,7 +377,7 @@ export const FindMatch: React.FC = () => {
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Working Status</label>
-                    <select 
+                    <select
                       className="form-control"
                       value={workingStatus}
                       onChange={(e) => setWorkingStatus(e.target.value)}
@@ -346,7 +393,7 @@ export const FindMatch: React.FC = () => {
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Family Type</label>
-                    <select 
+                    <select
                       className="form-control"
                       value={familyType}
                       onChange={(e) => setFamilyType(e.target.value)}
@@ -360,16 +407,16 @@ export const FindMatch: React.FC = () => {
 
                   <div className="form-group" style={{ marginBottom: 0 }}>
                     <label className="form-label">Blood Group</label>
-                    <input 
-                      type="text" 
-                      className="form-control" 
+                    <input
+                      type="text"
+                      className="form-control"
                       placeholder="e.g. B+, O-"
                       value={bloodGroup}
                       onChange={(e) => setBloodGroup(e.target.value)}
                     />
                   </div>
 
-                  <button 
+                  <button
                     onClick={() => {
                       fetchMatches();
                       if (isMobile) {
@@ -397,98 +444,108 @@ export const FindMatch: React.FC = () => {
                 No completed profiles match your search criteria. Try modifying your search filters!
               </div>
             ) : (
-              <div className="grid-cols-3" style={{ gap: '1.5rem' }}>
-                {profiles.map((profile) => {
-                  const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
-                  return (
-                    <div 
-                      key={profile.user.id}
-                      onClick={() => openProfileDetails(profile.user.id)}
-                      className="premium-card animate-fade-in"
-                      style={{ 
-                        padding: 0, 
-                        borderRadius: '24px', 
-                        overflow: 'hidden', 
-                        cursor: 'pointer',
-                        display: 'flex',
-                        flexDirection: 'column'
-                      }}
-                    >
-                      {/* Photo backdrop banner */}
-                      <div style={{ 
-                        height: '160px', 
-                        position: 'relative', 
-                        background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                      }}>
-                        {profile.profile_photo ? (
-                          <img 
-                            src={`${API_URL}${profile.profile_photo}`} 
-                            alt={fullName} 
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
-                          />
-                        ) : (
-                          <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
-                            {getInitials(profile.user.first_name, profile.user.last_name)}
-                          </div>
-                        )}
+              <>
+                <div className="grid-cols-3" style={{ gap: '1.5rem' }}>
+                  {profiles.map((profile) => {
+                    const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
+                    return (
+                      <div
+                        key={profile.user.id}
+                        onClick={() => openProfileDetails(profile.user.id)}
+                        className="premium-card animate-fade-in"
+                        style={{
+                          padding: 0,
+                          borderRadius: '24px',
+                          overflow: 'hidden',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column'
+                        }}
+                      >
+                        {/* Photo backdrop banner */}
+                        <div style={{
+                          height: '160px',
+                          position: 'relative',
+                          background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}>
+                          {profile.profile_photo ? (
+                            <img
+                              src={`${API_URL}${profile.profile_photo}`}
+                              alt={fullName}
+                              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            />
+                          ) : (
+                            <div style={{ fontSize: '3.5rem', fontFamily: 'var(--font-serif)', color: '#FFFDF9', opacity: 0.9, fontWeight: 700 }}>
+                              {getInitials(profile.user.first_name, profile.user.last_name)}
+                            </div>
+                          )}
 
-                        <div style={{ position: 'absolute', top: '0.8rem', right: '0.8rem', zIndex: 10 }}>
-                          <button
-                            onClick={(e) => handleLike(profile.user.id, e)}
-                            className="btn btn-outline"
-                            style={{ 
-                              padding: '0.5rem', 
-                              borderRadius: '50%', 
-                              backgroundColor: profile.liked_by_me ? 'var(--primary-burgundy)' : 'var(--white)',
-                              color: profile.liked_by_me ? 'var(--white)' : 'var(--primary-burgundy)',
-                              border: 'none',
-                              boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}
-                          >
-                            <Heart size={16} fill={profile.liked_by_me ? '#FFF' : 'none'} />
-                          </button>
+                          <div style={{ position: 'absolute', top: '0.8rem', right: '0.8rem', zIndex: 10 }}>
+                            <button
+                              onClick={(e) => handleLike(profile.user.id, e)}
+                              className="btn btn-outline"
+                              style={{
+                                padding: '0.5rem',
+                                borderRadius: '50%',
+                                backgroundColor: profile.liked_by_me ? 'var(--primary-burgundy)' : 'var(--white)',
+                                color: profile.liked_by_me ? 'var(--white)' : 'var(--primary-burgundy)',
+                                border: 'none',
+                                boxShadow: '0 4px 10px rgba(0,0,0,0.1)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}
+                            >
+                              <Heart size={16} fill={profile.liked_by_me ? '#FFF' : 'none'} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Card parameters details */}
+                        <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.85rem' }}>
+                          <div>
+                            <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', color: 'var(--text-dark)', margin: 0 }}>
+                              {fullName}
+                            </h3>
+                            <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
+                              <MapPin size={11} /> {profile.city}
+                            </span>
+                          </div>
+
+                          <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
+                            <div>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
+                              <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
+                            </div>
+                            <div>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
+                              <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Occupation</span>
+                            <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {profile.occupation || "Not specified"}
+                            </strong>
+                          </div>
                         </div>
                       </div>
+                    );
+                  })}
+                </div>
 
-                      {/* Card parameters details */}
-                      <div style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.6rem', fontSize: '0.85rem' }}>
-                        <div>
-                          <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.15rem', color: 'var(--text-dark)', margin: 0 }}>
-                            {fullName}
-                          </h3>
-                          <span style={{ fontSize: '0.75rem', color: 'var(--text-light)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
-                            <MapPin size={11} /> {profile.city}
-                          </span>
-                        </div>
-
-                        <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
-                          </div>
-                          <div>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.religion}</strong>
-                          </div>
-                        </div>
-
-                        <div>
-                          <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Occupation</span>
-                          <strong style={{ fontWeight: 600, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {profile.occupation || "Not specified"}
-                          </strong>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+                {/* Intersection Observer Trigger */}
+                <div ref={observerTargetRef} style={{ height: '60px', display: 'flex', justifyContent: 'center', alignItems: 'center', marginTop: '2rem' }}>
+                  {loadingMore && <div className="spinner"></div>}
+                  {!nextPageUrl && profiles.length > 0 && (
+                    <p style={{ color: 'var(--text-light)', fontSize: '0.9rem', fontWeight: 600 }}>No more profiles to display.</p>
+                  )}
+                </div>
+              </>
             )}
           </div>
 
@@ -511,7 +568,7 @@ export const FindMatch: React.FC = () => {
           justifyContent: 'center',
           padding: '2rem'
         }}>
-          <div 
+          <div
             className="animate-fade-in"
             style={{
               backgroundColor: 'var(--white)',
@@ -526,9 +583,9 @@ export const FindMatch: React.FC = () => {
               flexDirection: 'column'
             }}
           >
-            
+
             {/* Modal Close Button */}
-            <button 
+            <button
               onClick={closeProfileDetails}
               style={{
                 position: 'absolute',
@@ -568,10 +625,10 @@ export const FindMatch: React.FC = () => {
                   color: 'var(--white)'
                 }}>
                   {selectedProfile.profile_photo ? (
-                    <img 
-                      src={`${API_URL}${selectedProfile.profile_photo}`} 
-                      alt={`${selectedProfile.user.first_name}`} 
-                      style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, zIndex: 1 }} 
+                    <img
+                      src={`${API_URL}${selectedProfile.profile_photo}`}
+                      alt={`${selectedProfile.user.first_name}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, zIndex: 1 }}
                     />
                   ) : (
                     <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', fontFamily: 'var(--font-serif)', color: 'rgba(255,255,255,0.15)', fontWeight: 700, position: 'absolute', top: 0, left: 0 }}>
@@ -607,12 +664,12 @@ export const FindMatch: React.FC = () => {
                       onClick={(e) => handleLike(selectedProfile.user.id, e)}
                       className="btn btn-primary"
                       disabled={selectedProfile.liked_by_me}
-                      style={{ 
-                        borderRadius: '30px', 
-                        padding: '0.7rem 1.8rem', 
-                        display: 'flex', 
-                        alignItems: 'center', 
-                        gap: '0.4rem', 
+                      style={{
+                        borderRadius: '30px',
+                        padding: '0.7rem 1.8rem',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '0.4rem',
                         boxShadow: 'none',
                         background: selectedProfile.liked_by_me ? 'rgba(255,255,255,0.2)' : 'linear-gradient(135deg, #a31d56 0%, var(--primary-burgundy) 100%)',
                         color: 'var(--white)',
@@ -627,7 +684,7 @@ export const FindMatch: React.FC = () => {
 
                 {/* Body public details cards */}
                 <div style={{ padding: '2.5rem 3rem' }}>
-                  
+
                   {/* About Me Section */}
                   <div style={{ marginBottom: '2rem' }}>
                     <h4 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', color: 'var(--primary-burgundy)', marginBottom: '0.5rem', borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.4rem' }}>

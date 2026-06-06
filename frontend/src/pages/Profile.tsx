@@ -57,9 +57,154 @@ export const Profile: React.FC = () => {
     <>
       <div className="app-container desktop-only">
         <Header />
-        <main className="main-content" style={{ maxWidth: '800px', margin: '0 auto', padding: '3rem 2rem', textAlign: 'center' }}>
-          <h2>Please view this page on a mobile device or resize your window.</h2>
-          <button className="btn btn-primary" onClick={() => navigate('/profile/edit')}>Edit Profile Details</button>
+        <main className="main-content" style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '3rem 2rem' }}>
+          <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
+            
+            {/* Left Column - Profile Card */}
+            <div style={{ flex: 1, minWidth: '320px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="premium-card" style={{ padding: '2rem', textAlign: 'center' }}>
+                <div style={{ position: 'relative', width: '120px', height: '120px', margin: '0 auto 1.5rem auto', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <svg width="120" height="120" viewBox="0 0 120 120" style={{ transform: 'rotate(-90deg)', position: 'absolute', top: 0, left: 0, zIndex: 2 }}>
+                    <circle cx="60" cy="60" r="50" fill="transparent" stroke="#F4EAE1" strokeWidth="6" />
+                    <circle
+                      cx="60" cy="60" r="50" fill="transparent"
+                      stroke="var(--primary-burgundy)" strokeWidth="6"
+                      strokeDasharray={314.16}
+                      strokeDashoffset={314.16 - (314.16 * (profile?.completeness_percentage || 0)) / 100}
+                      strokeLinecap="round"
+                      style={{ transition: 'stroke-dashoffset 0.8s ease' }}
+                    />
+                  </svg>
+                  <div style={{
+                    width: '88px', height: '88px', borderRadius: '50%',
+                    overflow: 'hidden', backgroundColor: '#FDFBF7',
+                    border: '1.5px solid rgba(128,10,63,0.08)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1, position: 'relative',
+                  }}>
+                    {profile?.profile_photo ? (
+                      <img src={`${API_URL}${profile.profile_photo}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary-burgundy)', fontFamily: 'var(--font-serif)' }}>
+                        {getInitials()}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{
+                    position: 'absolute', bottom: '-5px',
+                    backgroundColor: 'var(--primary-burgundy)', color: 'var(--white)',
+                    padding: '3px 10px', borderRadius: '12px',
+                    fontSize: '0.75rem', fontWeight: 800, fontFamily: 'var(--font-display)',
+                    zIndex: 3, boxShadow: '0 3px 8px rgba(128, 10, 63, 0.25)',
+                    border: '1.5px solid var(--white)',
+                  }}>
+                    {profile?.completeness_percentage || 0}%
+                  </div>
+                </div>
+
+                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: 'var(--primary-burgundy)', marginBottom: '0.25rem' }}>
+                  {user?.first_name} {user?.last_name}
+                </h2>
+                <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '1.5rem' }}>
+                  {profile?.occupation || 'Profile Holder'}
+                </p>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '1.5rem' }}>
+                  <button className="btn btn-primary" onClick={() => navigate('/profile/edit')} style={{ width: '100%' }}>
+                    <Edit2 size={16} /> Edit Profile
+                  </button>
+                  <button className="btn btn-outline" onClick={handleLogout} style={{ width: '100%' }}>
+                    <LogOut size={16} /> Sign Out
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Details Cards */}
+            <div style={{ flex: 2.2, minWidth: '350px', width: '100%', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+              <div className="premium-card" style={{ padding: '2rem' }}>
+                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: 'var(--primary-burgundy)', marginBottom: '1.2rem', fontWeight: 600 }}>Personal Information</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Age</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{user?.age ? `${user.age} yrs` : '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Gender</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{user?.gender || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Height</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.height || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Religion</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.religion || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Caste</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.caste || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Marital Status</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.marital_status || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Blood Group</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.blood_group || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="premium-card" style={{ padding: '2rem' }}>
+                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: 'var(--primary-burgundy)', marginBottom: '1.2rem', fontWeight: 600 }}>Professional Information</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Education</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.education || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Occupation</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.occupation || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Working Status</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.working_status || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Annual Salary</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.annual_salary || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="premium-card" style={{ padding: '2rem' }}>
+                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: 'var(--primary-burgundy)', marginBottom: '1.2rem', fontWeight: 600 }}>Location & Family</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.2rem' }}>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Current City</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.city || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Hometown</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.hometown || '—'}</p>
+                  </div>
+                  <div>
+                    <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Family Type</span>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.family_type || '—'}</p>
+                  </div>
+                </div>
+              </div>
+
+              {profile?.about_me && (
+                <div className="premium-card" style={{ padding: '2rem' }}>
+                  <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.5rem', color: 'var(--primary-burgundy)', marginBottom: '1.2rem', fontWeight: 600 }}>About Me</h3>
+                  <p style={{ margin: 0, fontSize: '1rem', color: 'var(--text-medium)', lineHeight: 1.6 }}>{profile.about_me}</p>
+                </div>
+              )}
+            </div>
+
+          </div>
         </main>
         <Footer />
       </div>
@@ -90,7 +235,10 @@ export const Profile: React.FC = () => {
               width: '100px', height: '100px', borderRadius: '50%', 
               background: 'linear-gradient(180deg, #FF9BBA 0%, #FF6B9B 100%)',
               border: '4px solid white',
-              position: 'absolute', top: '-50px', left: '1.5rem',
+              marginTop: '-50px',
+              marginLeft: '0px',
+              marginBottom: '10px',
+              position: 'relative',
               display: 'flex', justifyContent: 'center', alignItems: 'center',
               color: 'white', fontSize: '2.5rem', fontFamily: 'var(--font-serif)',
               boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
@@ -108,7 +256,7 @@ export const Profile: React.FC = () => {
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '60px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginTop: '10px' }}>
               <div>
                 <h2 style={{ margin: 0, fontFamily: 'var(--font-serif)', fontSize: '1.8rem', color: '#2B1D24', fontWeight: 500 }}>{user?.first_name}</h2>
                 <p style={{ margin: '4px 0 12px 0', fontSize: '0.85rem', color: '#7E7E7E' }}>Complete your profile</p>
