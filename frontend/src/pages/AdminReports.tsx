@@ -5,6 +5,7 @@ import { AdminLayout } from '../components/AdminLayout';
 import { BarChart, TrendingUp, Users } from 'lucide-react';
 import axios from 'axios';
 import Chart from 'chart.js/auto';
+import { API_URL } from '../config';
 
 interface ReportsData {
   registrations_by_month: { month: string; count: number }[];
@@ -43,7 +44,7 @@ export const AdminReports: React.FC = () => {
 
   const fetchReportsData = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/auth/admin/reports/', {
+      const response = await axios.get(`${API_URL}/api/auth/admin/reports/`, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
       setData(response.data);

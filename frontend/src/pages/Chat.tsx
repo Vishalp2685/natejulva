@@ -7,6 +7,7 @@ import {
   Send, MessageSquare, ShieldAlert, HeartHandshake, 
   MapPin, Clock, Check, CheckCheck, Sparkles 
 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface PublicProfile {
   id: number;
@@ -121,7 +122,7 @@ export const Chat: React.FC = () => {
   const fetchConversations = async (showLoadingIndicator: boolean) => {
     if (showLoadingIndicator) setLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/chat/conversations/', {
+      const response = await fetch(`${API_URL}/api/profiles/chat/conversations/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       const data = await response.json();
@@ -138,7 +139,7 @@ export const Chat: React.FC = () => {
   const fetchMessages = async (partnerId: number, showLoadingIndicator: boolean) => {
     if (showLoadingIndicator) setMessagesLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/profiles/chat/${partnerId}/`, {
+      const response = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       const data = await response.json();
@@ -161,7 +162,7 @@ export const Chat: React.FC = () => {
     setSendLoading(true);
 
     try {
-      const response = await fetch(`http://localhost:8000/api/profiles/chat/${activePartnerId}/`, {
+      const response = await fetch(`${API_URL}/api/profiles/chat/${activePartnerId}/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -314,7 +315,7 @@ export const Chat: React.FC = () => {
                           flexShrink: 0
                         }}>
                           {c.profile.profile_photo ? (
-                            <img src={`http://localhost:8000${c.profile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={`${API_URL}${c.profile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                               {getInitials(c.profile.user.first_name, c.profile.user.last_name)}
@@ -412,7 +413,7 @@ export const Chat: React.FC = () => {
                         flexShrink: 0
                       }}>
                         {activeConversation.profile.profile_photo ? (
-                          <img src={`http://localhost:8000${activeConversation.profile.profile_photo}`} alt={`${activeConversation.profile.user.first_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          <img src={`${API_URL}${activeConversation.profile.profile_photo}`} alt={`${activeConversation.profile.user.first_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                         ) : (
                           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                             {getInitials(activeConversation.profile.user.first_name, activeConversation.profile.user.last_name)}

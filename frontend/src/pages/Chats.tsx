@@ -4,10 +4,10 @@ import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { 
-  MessageSquare, ChevronLeft, Send, Clock, Check, CheckCheck, Sparkles, 
-  MessageCircleHeart, Search, Smile, Paperclip, MoreVertical, HeartCrack, User, X, ShieldAlert, MapPin
+  MessageSquare, ChevronLeft, Send, Check, CheckCheck, Sparkles, 
+  MessageCircleHeart, Search, MoreVertical, HeartCrack, User, X, ShieldAlert, MapPin
 } from 'lucide-react';
-
+import { API_URL } from '../config';
 interface PublicProfile {
   id: number;
   user: {
@@ -52,7 +52,7 @@ export const Chats: React.FC = () => {
   const { token, user } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
 
-  const endpoint = 'http://localhost:8000/api/profiles/chat/conversations/';
+  const endpoint = `${API_URL}/api/profiles/chat/conversations/`;
   const cachedInitial = getCachedData(endpoint);
 
   const [loading, setLoading] = useState(!cachedInitial);
@@ -61,7 +61,6 @@ export const Chats: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputText, setInputText] = useState('');
-  const [sendLoading, setSendLoading] = useState(false);
   
   // WhatsApp features
   const [searchQuery, setSearchQuery] = useState('');
@@ -114,7 +113,7 @@ export const Chats: React.FC = () => {
 
   const fetchMyProfile = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/profiles/me/', {
+      const res = await fetch(`${API_URL}/api/profiles/me/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       if (res.ok) {
@@ -146,7 +145,7 @@ export const Chats: React.FC = () => {
   const fetchMessages = async (partnerId: number, showLoading: boolean) => {
     if (showLoading) setMessagesLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/profiles/chat/${partnerId}/`, { headers: { 'Authorization': `Token ${token}` } });
+      const res = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, { headers: { 'Authorization': `Token ${token}` } });
       const data = await res.json();
       if (res.ok) setMessages(data);
     } catch (err) { console.error(err); }
@@ -184,7 +183,7 @@ export const Chats: React.FC = () => {
     }));
 
     try {
-      const res = await fetch(`http://localhost:8000/api/profiles/chat/${selectedChatProfile.user.id}/`, {
+      const res = await fetch(`${API_URL}/api/profiles/chat/${selectedChatProfile.user.id}/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
@@ -222,7 +221,7 @@ export const Chats: React.FC = () => {
   const handleUnmatch = async (partnerId: number) => {
     if (!window.confirm("Are you sure you want to unmatch this profile? This will delete your chat history.")) return;
     try {
-      const res = await fetch('http://localhost:8000/api/profiles/unmatch/', {
+      const res = await fetch(`${API_URL}/api/profiles/unmatch/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -251,7 +250,6 @@ export const Chats: React.FC = () => {
   const getInitials = (f: string, l: string) => `${f.charAt(0)}${l.charAt(0)}`.toUpperCase();
   const formatTime = (iso: string) => {
     const d = new Date(iso);
-    // If today, show time. If yesterday, show 'Yesterday'. Else show date.
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
@@ -299,7 +297,7 @@ export const Chats: React.FC = () => {
             {/* Avatar container */}
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#FEF0F0', flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8B184F', fontWeight: 700, fontSize: '1rem' }}>
               {profile.profile_photo
-                ? <img src={`http://localhost:8000${profile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ? <img src={`${API_URL}${profile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : getInitials(profile.user.first_name, profile.user.last_name)}
             </div>
             
@@ -383,7 +381,7 @@ export const Chats: React.FC = () => {
         display: 'flex',
         flexDirection: 'column',
         height: '100%',
-        backgroundColor: '#efeae2', // Warm WhatsApp tiled-like wallpaper color
+        backgroundColor: '#efeae2',
         borderRadius: isMobile ? '0' : '0 20px 20px 0',
         overflow: 'hidden',
         position: 'relative'
@@ -407,7 +405,7 @@ export const Chats: React.FC = () => {
             )}
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#FEF0F0', flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8B184F', fontWeight: 700 }}>
               {selectedChatProfile.profile_photo
-                ? <img src={`http://localhost:8000${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ? <img src={`${API_URL}${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : getInitials(selectedChatProfile.user.first_name, selectedChatProfile.user.last_name)}
             </div>
             <div>
@@ -419,7 +417,12 @@ export const Chats: React.FC = () => {
           </div>
           
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#54656f', position: 'relative' }}>
-            <Search size={19} style={{ cursor: 'pointer' }} />
+            <span
+              aria-label="Search"
+              style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+            >
+              <Search size={19} />
+            </span>
             <button 
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
               style={{ background: 'none', border: 'none', padding: 0, color: '#54656f', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
@@ -520,7 +523,7 @@ export const Chats: React.FC = () => {
                 <div style={{
                   padding: '6px 10px 20px 10px',
                   borderRadius: isMine ? '8px 0px 8px 8px' : '0px 8px 8px 8px',
-                  background: isMine ? '#d9fdd3' : 'white', // keeps standard soft colors for bubbles, outgoing soft green, incoming white
+                  background: isMine ? '#d9fdd3' : 'white',
                   color: '#111b21',
                   fontSize: '0.88rem',
                   lineHeight: 1.45,
@@ -566,8 +569,6 @@ export const Chats: React.FC = () => {
           alignItems: 'center', 
           flexShrink: 0 
         }}>
-
-          
           <input
             type="text"
             className="form-control"
@@ -670,7 +671,7 @@ export const Chats: React.FC = () => {
           {/* Photo Banner */}
           <div style={{ height: '220px', position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)' }}>
             {viewingProfile.profile_photo ? (
-              <img src={`http://localhost:8000${viewingProfile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              <img src={`${API_URL}${viewingProfile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
               <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '5rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700 }}>
                 {getInitials(viewingProfile.user.first_name, viewingProfile.user.last_name)}
@@ -777,7 +778,7 @@ export const Chats: React.FC = () => {
             </div>
           ) : (
             <div className="chats-panel">
-              {/* Left sidebar: conversation list — always visible desktop; hidden on mobile when chat open */}
+              {/* Left sidebar: conversation list */}
               <div className={`chats-sidebar ${selectedChatProfile ? 'chats-sidebar-hidden-mobile' : ''}`} style={{ borderRight: '1px solid #e9edef' }}>
                 {/* WhatsApp Style Sidebar Header */}
                 <div style={{
@@ -790,7 +791,7 @@ export const Chats: React.FC = () => {
                 }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {myProfile && myProfile.profile_photo ? (
-                      <img src={`http://localhost:8000${myProfile.profile_photo}`} alt="My profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={`${API_URL}${myProfile.profile_photo}`} alt="My profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                         {user ? getInitials(user.first_name, user.last_name) : 'ME'}
@@ -798,8 +799,20 @@ export const Chats: React.FC = () => {
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: '1.2rem', color: '#54656f' }}>
-                    <Sparkles size={20} title="My Matches" style={{ cursor: 'pointer' }} onClick={() => navigate('/likes')} />
-                    <MessageSquare size={20} title="New Chat" style={{ cursor: 'pointer' }} onClick={() => navigate('/likes')} />
+                    <span
+                      aria-label="My Matches"
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      onClick={() => navigate('/likes')}
+                    >
+                      <Sparkles size={20} />
+                    </span>
+                    <span
+                      aria-label="New Chat"
+                      style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}
+                      onClick={() => navigate('/likes')}
+                    >
+                      <MessageSquare size={20} />
+                    </span>
                   </div>
                 </div>
 
@@ -860,7 +873,6 @@ export const Chats: React.FC = () => {
                 {selectedChatProfile ? (
                   renderChatBox(false)
                 ) : (
-                  /* WhatsApp Web idle screen placeholder */
                   <div style={{ 
                     flex: 1, 
                     display: 'flex', 
@@ -912,7 +924,7 @@ export const Chats: React.FC = () => {
 
       </main>
 
-      {/* On mobile: if a conversation is open, render as a fixed full-screen overlay to cover headers and bottom nav */}
+      {/* On mobile: if a conversation is open, render as a fixed full-screen overlay */}
       {selectedChatProfile && (
         <div className="mobile-only" style={{
           position: 'fixed',

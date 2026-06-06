@@ -6,6 +6,7 @@ import {
   Search, ChevronLeft, ChevronRight, X, Calendar
 } from 'lucide-react';
 import axios from 'axios';
+import { API_URL } from '../config';
 
 interface ProfileDetails {
   id: number;
@@ -53,7 +54,7 @@ export const AdminMembershipManagement: React.FC = () => {
   const fetchSubscriptions = async () => {
     setLoading(true);
     try {
-      const response = await axios.get('http://localhost:8000/api/auth/admin/users/', {
+      const response = await axios.get(`${API_URL}/api/auth/admin/users/`, {
         headers: { 'Authorization': `Token ${adminToken}` },
         params: {
           page: page,
@@ -77,7 +78,7 @@ export const AdminMembershipManagement: React.FC = () => {
     }
 
     try {
-      const response = await axios.post(`http://localhost:8000/api/auth/admin/users/${user.id}/update-membership/`, {
+      const response = await axios.post(`${API_URL}/api/auth/admin/users/${user.id}/update-membership/`, {
         is_premium: false
       }, {
         headers: { 'Authorization': `Token ${adminToken}` }
@@ -95,7 +96,7 @@ export const AdminMembershipManagement: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      const response = await axios.post(`http://localhost:8000/api/auth/admin/users/${selectedUser.id}/update-membership/`, {
+      const response = await axios.post(`${API_URL}/api/auth/admin/users/${selectedUser.id}/update-membership/`, {
         is_premium: true,
         months: upgradeMonths,
         payment_status: paymentStatus

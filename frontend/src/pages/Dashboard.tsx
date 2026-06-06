@@ -9,6 +9,7 @@ import {
   Compass, ShieldAlert, ArrowRight,
   Bell, X, GraduationCap, Briefcase, Users, BookHeart
 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface RecommendedProfile {
   id: number;
@@ -38,8 +39,8 @@ export const Dashboard: React.FC = () => {
   const { token, user } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
   
-  const cachedProfile = getCachedData('http://localhost:8000/api/profiles/me/');
-  const cachedRecs = getCachedData('http://localhost:8000/api/profiles/recommendations/');
+  const cachedProfile = getCachedData(`${API_URL}/api/profiles/me/`);
+  const cachedRecs = getCachedData(`${API_URL}/api/profiles/recommendations/`);
   
   const [profileLoading, setProfileLoading] = useState(!cachedProfile || !cachedRecs);
   const [completeness, setCompleteness] = useState(cachedProfile?.completeness_percentage || 0);
@@ -61,7 +62,7 @@ export const Dashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     try {
       // 1. Fetch current profile completeness
-      const { data: pData, ok: pOk } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
+      const { data: pData, ok: pOk } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       
@@ -70,7 +71,7 @@ export const Dashboard: React.FC = () => {
       }
 
       // 2. Fetch recommendations
-      const { data: rData, ok: rOk } = await cachedFetch('http://localhost:8000/api/profiles/recommendations/', {
+      const { data: rData, ok: rOk } = await cachedFetch(`${API_URL}/api/profiles/recommendations/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       
@@ -94,7 +95,7 @@ export const Dashboard: React.FC = () => {
     if (sentRequests.has(profileId) || connectLoading) return;
     setConnectLoading(true);
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/like/', {
+      const response = await fetch(`${API_URL}api/profiles/like/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,7 +174,7 @@ export const Dashboard: React.FC = () => {
             {/* Photo Banner */}
             <div style={{ height: '240px', position: 'relative', borderRadius: '28px 28px 0 0', overflow: 'hidden', background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)' }}>
               {selectedProfile.profile_photo ? (
-                <img src={`http://localhost:8000${selectedProfile.profile_photo}`} alt={`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={`${API_URL}${selectedProfile.profile_photo}`} alt={`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700, opacity: 0.85 }}>
                   {getInitials(selectedProfile.user.first_name, selectedProfile.user.last_name)}
@@ -462,7 +463,7 @@ export const Dashboard: React.FC = () => {
                           }}>
                             {rec.profile_photo ? (
                               <img 
-                                src={`http://localhost:8000${rec.profile_photo}`} 
+                                src={`${API_URL}${rec.profile_photo}`} 
                                 alt={fullName} 
                                 style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', zIndex: 1 }} 
                               />
@@ -628,7 +629,7 @@ export const Dashboard: React.FC = () => {
                     cursor: 'pointer',
                   }}>
                     {rec.profile_photo ? (
-                      <img src={`http://localhost:8000${rec.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={`${API_URL}${rec.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700 }}>
                         {rec.user.first_name.charAt(0).toUpperCase()}

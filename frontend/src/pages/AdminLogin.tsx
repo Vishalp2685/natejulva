@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { Shield, Eye, EyeOff } from 'lucide-react';
 import axios from 'axios';
+import { API_URL } from '../config';
 
 export const AdminLogin: React.FC = () => {
   const navigate = useNavigate();
@@ -29,7 +30,7 @@ export const AdminLogin: React.FC = () => {
     setError('');
 
     try {
-      const response = await axios.post('http://localhost:8000/api/auth/login/', {
+      const response = await axios.post(`${API_URL}/api/auth/login/`, {
         mobile_number: mobileNumber,
         password: password
       });

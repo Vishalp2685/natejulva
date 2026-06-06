@@ -9,6 +9,7 @@ import {
   MapPin, CheckCircle, MessageCircleHeart, Info,
   ChevronLeft, Send, Clock, Check, CheckCheck, MessageSquare, Sparkles, Bell
 } from 'lucide-react';
+import { API_URL } from '../config';
 
 interface PublicProfile {
   id: number;
@@ -120,15 +121,15 @@ export const LikesMatches: React.FC = () => {
 
       if (forceRefreshTab) {
         let endpoint = '';
-        if (forceRefreshTab === 'matches') endpoint = 'http://localhost:8000/api/profiles/chat/conversations/';
-        else if (forceRefreshTab === 'received') endpoint = 'http://localhost:8000/api/profiles/likes-received/';
-        else if (forceRefreshTab === 'sent') endpoint = 'http://localhost:8000/api/profiles/likes-sent/';
+        if (forceRefreshTab === 'matches') endpoint = `${API_URL}/api/profiles/chat/conversations/`;
+        else if (forceRefreshTab === 'received') endpoint = `${API_URL}/api/profiles/likes-received/`;
+        else if (forceRefreshTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
         await fetchTab(forceRefreshTab, endpoint);
       } else {
         await Promise.all([
-          fetchTab('matches', 'http://localhost:8000/api/profiles/chat/conversations/'),
-          fetchTab('received', 'http://localhost:8000/api/profiles/likes-received/'),
-          fetchTab('sent', 'http://localhost:8000/api/profiles/likes-sent/')
+          fetchTab('matches', `${API_URL}/api/profiles/chat/conversations/`),
+          fetchTab('received', `${API_URL}/api/profiles/likes-received/`),
+          fetchTab('sent', `${API_URL}/api/profiles/likes-sent/`)
         ]);
       }
     } catch (err) {
@@ -255,7 +256,7 @@ export const LikesMatches: React.FC = () => {
   const fetchLikesDataSilently = async () => {
     if (!token) return;
     try {
-      const response = await fetch('http://localhost:8000/api/profiles/chat/conversations/', {
+      const response = await fetch(`${API_URL}/api/profiles/chat/conversations/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       const data = await response.json();
@@ -272,7 +273,7 @@ export const LikesMatches: React.FC = () => {
   const fetchMessages = async (partnerId: number, showLoadingIndicator: boolean) => {
     if (showLoadingIndicator) setMessagesLoading(true);
     try {
-      const response = await fetch(`http://localhost:8000/api/profiles/chat/${partnerId}/`, {
+      const response = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, {
         headers: { 'Authorization': `Token ${token}` }
       });
       const data = await response.json();
@@ -295,7 +296,7 @@ export const LikesMatches: React.FC = () => {
     setSendLoading(true);
 
     try {
-      const { data, ok } = await cachedFetch(`http://localhost:8000/api/profiles/chat/${selectedChatProfile.user.id}/`, {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/chat/${selectedChatProfile.user.id}/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -318,7 +319,7 @@ export const LikesMatches: React.FC = () => {
   const handleLikeBack = async (profileId: number, name: string) => {
     setSuccessMessage(null);
     try {
-      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/like/', {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/like/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -350,7 +351,7 @@ export const LikesMatches: React.FC = () => {
     if (!confirmUnmatch) return;
 
     try {
-      const { ok } = await cachedFetch('http://localhost:8000/api/profiles/unmatch/', {
+      const { ok } = await cachedFetch(`${API_URL}/api/profiles/unmatch/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -416,7 +417,7 @@ export const LikesMatches: React.FC = () => {
                     }}>
                       {profile.profile_photo ? (
                         <img 
-                          src={`http://localhost:8000${profile.profile_photo}`} 
+                          src={`${API_URL}${profile.profile_photo}`} 
                           alt={fullName} 
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
@@ -562,7 +563,7 @@ export const LikesMatches: React.FC = () => {
                     }}>
                       {profile.profile_photo ? (
                         <img 
-                          src={`http://localhost:8000${profile.profile_photo}`} 
+                          src={`${API_URL}${profile.profile_photo}`} 
                           alt={fullName} 
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
@@ -701,7 +702,7 @@ export const LikesMatches: React.FC = () => {
               justifyContent: 'center'
             }}>
               {selectedChatProfile.profile_photo ? (
-                <img src={`http://localhost:8000${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={`${API_URL}${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                   {getInitials(selectedChatProfile.user.first_name, selectedChatProfile.user.last_name)}

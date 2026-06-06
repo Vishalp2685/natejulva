@@ -5,13 +5,14 @@ import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
 import { Bell, Edit2, LogOut, Camera } from 'lucide-react';
+import { API_URL } from '../config';
 
 export const Profile: React.FC = () => {
   const navigate = useNavigate();
   const { token, user, logout } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
   
-  const cachedProfile = getCachedData('http://localhost:8000/api/profiles/me/');
+  const cachedProfile = getCachedData(`${API_URL}/api/profiles/me/`);
   const [profile, setProfile] = useState<any>(cachedProfile || null);
   const [loading, setLoading] = useState(!cachedProfile);
 
@@ -25,7 +26,7 @@ export const Profile: React.FC = () => {
 
   const fetchProfile = async () => {
     try {
-      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
         headers: { Authorization: `Token ${token}` },
       });
       if (ok && data) {
@@ -95,7 +96,7 @@ export const Profile: React.FC = () => {
               boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
             }}>
               {profile?.profile_photo ? (
-                <img src={`http://localhost:8000${profile.profile_photo}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                <img src={`${API_URL}${profile.profile_photo}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
               ) : getInitials()}
               <div style={{ 
                 position: 'absolute', bottom: '0', right: '0', 

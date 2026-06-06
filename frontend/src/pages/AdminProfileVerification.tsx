@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
+import { API_URL } from '../config';
 import { 
   Check, X, Image, User, Calendar, MapPin
 } from 'lucide-react';
@@ -54,7 +55,7 @@ export const AdminProfileVerification: React.FC = () => {
     setLoading(true);
     setError('');
     try {
-      const response = await axios.get('http://localhost:8000/api/auth/admin/users/', {
+      const response = await axios.get(`${API_URL}/api/auth/admin/users/`, {
         headers: { 'Authorization': `Token ${adminToken}` },
         params: {
           verification_status: filter
@@ -84,7 +85,7 @@ export const AdminProfileVerification: React.FC = () => {
     const remarks = remarksState[userId] || '';
     
     try {
-      await axios.post(`http://localhost:8000/api/auth/admin/users/${userId}/verify-profile/`, {
+      await axios.post(`${API_URL}/api/auth/admin/users/${userId}/verify-profile/`, {
         verification_status: status,
         admin_remarks: remarks
       }, {
@@ -176,7 +177,7 @@ export const AdminProfileVerification: React.FC = () => {
               }}>
                 {user.profile?.profile_photo ? (
                   <img 
-                    src={`http://localhost:8000${user.profile.profile_photo}`} 
+                    src={`${API_URL}${user.profile.profile_photo}`} 
                     alt="Submission Profile Photo"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                   />

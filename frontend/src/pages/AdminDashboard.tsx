@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
+import { API_URL } from '../config';
+
 import { 
   Users, UserCheck, Clock, UserPlus, 
   CircleAlert, CheckCircle, ArrowRight
@@ -45,7 +47,8 @@ export const AdminDashboard: React.FC = () => {
 
   const fetchDashboardStats = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/auth/admin/dashboard/', {
+      const response = await axios.get(
+  `${API_URL}/api/auth/admin/dashboard/`, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
       setStats(response.data);

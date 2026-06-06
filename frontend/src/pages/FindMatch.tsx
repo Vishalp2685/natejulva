@@ -7,7 +7,7 @@ import { Footer } from '../components/Footer';
 import { 
   Heart, MapPin, X, Filter, ShieldClose 
 } from 'lucide-react';
-
+import { API_URL } from '../config';
 interface PublicProfile {
   id: number;
   user: {
@@ -48,7 +48,7 @@ export const FindMatch: React.FC = () => {
       const targetGender = user.gender === 'Male' ? 'Female' : user.gender === 'Female' ? 'Male' : '';
       if (targetGender) params.append('gender', targetGender);
     }
-    return `http://localhost:8000/api/profiles/search/?${params.toString()}`;
+    return `${API_URL}/api/profiles/search/?${params.toString()}`;
   };
 
   const initialUrl = getInitialSearchUrl();
@@ -67,6 +67,22 @@ export const FindMatch: React.FC = () => {
   const [workingStatus, setWorkingStatus] = useState('');
   const [familyType, setFamilyType] = useState('');
   const [bloodGroup, setBloodGroup] = useState('');
+
+  // Mobile filter toggle states
+  const [showFilters, setShowFilters] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
   
   useEffect(() => {
     if (!token) {
@@ -92,7 +108,7 @@ export const FindMatch: React.FC = () => {
       if (targetGender) params.append('gender', targetGender);
     }
 
-    const url = `http://localhost:8000/api/profiles/search/?${params.toString()}`;
+    const url = `${API_URL}/api/profiles/search/?${params.toString()}`;
     const cached = getCachedData(url);
     if (cached) {
       setProfiles(cached);
@@ -120,7 +136,7 @@ export const FindMatch: React.FC = () => {
   const handleLike = async (profileId: number, e: React.MouseEvent) => {
     e.stopPropagation(); // Stop from opening the details modal
     try {
-      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/like/', {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/like/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -155,7 +171,7 @@ export const FindMatch: React.FC = () => {
 
   const openProfileDetails = async (userId: number) => {
     setSelectedProfileId(userId);
-    const url = `http://localhost:8000/api/profiles/${userId}/`;
+    const url = `${API_URL}/api/profiles/${userId}/`;
     const cached = getCachedData(url);
     if (cached) {
       setSelectedProfile(cached);
@@ -189,6 +205,9 @@ export const FindMatch: React.FC = () => {
     setWorkingStatus('');
     setFamilyType('');
     setBloodGroup('');
+    if (isMobile) {
+      setShowFilters(false);
+    }
     setTimeout(() => fetchMatches(), 50);
   };
 
@@ -211,105 +230,161 @@ export const FindMatch: React.FC = () => {
           </p>
         </div>
 
+        {/* MOBILE FILTER TOGGLE BUTTON */}
+        {isMobile && (
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowFilters(!showFilters)}
+            style={{
+              width: '100%',
+              borderRadius: '12px',
+              marginBottom: '16px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '0.5rem',
+              padding: '0.85rem',
+              position: 'sticky',
+              top: '0',
+              zIndex: 100,
+              transition: 'all 300ms ease',
+            }}
+          >
+            <Filter size={18} />
+            {showFilters ? "Hide Filters" : "Search Filters"}
+          </button>
+        )}
+
         <div style={{ display: 'flex', gap: '2.5rem', alignItems: 'flex-start', flexWrap: 'wrap' }}>
           
           {/* LEFT FILTER PANEL */}
-          <div style={{ flex: 1, minWidth: '280px', display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-            <div className="premium-card" style={{ padding: '2rem' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.75rem' }}>
-                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', color: 'var(--primary-burgundy)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                  <Filter size={16} /> Search Filters
-                </h3>
-                <button onClick={clearFilters} className="btn-text" style={{ fontSize: '0.8rem', padding: 0 }}>
-                  Clear All
-                </button>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Religion</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="e.g. Hindu, Sikh"
-                    value={religion}
-                    onChange={(e) => setReligion(e.target.value)}
-                  />
+          {(!isMobile || showFilters) && (
+            <div
+              style={{
+                flex: 1,
+                minWidth: '280px',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '1.5rem',
+                width: isMobile ? '100%' : undefined,
+                overflow: 'hidden',
+                transition: 'all 300ms ease',
+                animation: isMobile && showFilters ? 'filterSlideDown 300ms ease forwards' : undefined,
+              }}
+            >
+              <style>{`
+                @keyframes filterSlideDown {
+                  from {
+                    opacity: 0;
+                    transform: translateY(-12px);
+                  }
+                  to {
+                    opacity: 1;
+                    transform: translateY(0);
+                  }
+                }
+              `}</style>
+              <div className="premium-card" style={{ padding: '2rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.75rem' }}>
+                  <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.25rem', color: 'var(--primary-burgundy)', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+                    <Filter size={16} /> Search Filters
+                  </h3>
+                  <button onClick={clearFilters} className="btn-text" style={{ fontSize: '0.8rem', padding: 0 }}>
+                    Clear All
+                  </button>
                 </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Caste</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="e.g. Brahmin, Gujarati"
-                    value={caste}
-                    onChange={(e) => setCaste(e.target.value)}
-                  />
-                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Religion</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="e.g. Hindu, Sikh"
+                      value={religion}
+                      onChange={(e) => setReligion(e.target.value)}
+                    />
+                  </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">City</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="e.g. Mumbai, Pune"
-                    value={city}
-                    onChange={(e) => setCity(e.target.value)}
-                  />
-                </div>
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Caste</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="e.g. Brahmin, Gujarati"
+                      value={caste}
+                      onChange={(e) => setCaste(e.target.value)}
+                    />
+                  </div>
 
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Working Status</label>
-                  <select 
-                    className="form-control"
-                    value={workingStatus}
-                    onChange={(e) => setWorkingStatus(e.target.value)}
-                    style={{ height: '48px' }}
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">City</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="e.g. Mumbai, Pune"
+                      value={city}
+                      onChange={(e) => setCity(e.target.value)}
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Working Status</label>
+                    <select 
+                      className="form-control"
+                      value={workingStatus}
+                      onChange={(e) => setWorkingStatus(e.target.value)}
+                      style={{ height: '48px' }}
+                    >
+                      <option value="">Any working status</option>
+                      <option value="Employed">Employed</option>
+                      <option value="Self-employed">Self-employed</option>
+                      <option value="Business">Business</option>
+                      <option value="Unemployed">Unemployed</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Family Type</label>
+                    <select 
+                      className="form-control"
+                      value={familyType}
+                      onChange={(e) => setFamilyType(e.target.value)}
+                      style={{ height: '48px' }}
+                    >
+                      <option value="">Any family type</option>
+                      <option value="Nuclear">Nuclear</option>
+                      <option value="Joint">Joint</option>
+                    </select>
+                  </div>
+
+                  <div className="form-group" style={{ marginBottom: 0 }}>
+                    <label className="form-label">Blood Group</label>
+                    <input 
+                      type="text" 
+                      className="form-control" 
+                      placeholder="e.g. B+, O-"
+                      value={bloodGroup}
+                      onChange={(e) => setBloodGroup(e.target.value)}
+                    />
+                  </div>
+
+                  <button 
+                    onClick={() => {
+                      fetchMatches();
+                      if (isMobile) {
+                        setShowFilters(false);
+                      }
+                    }}
+                    className="btn btn-primary"
+                    style={{ width: '100%', borderRadius: '20px', padding: '0.8rem', marginTop: '0.5rem' }}
                   >
-                    <option value="">Any working status</option>
-                    <option value="Employed">Employed</option>
-                    <option value="Self-employed">Self-employed</option>
-                    <option value="Business">Business</option>
-                    <option value="Unemployed">Unemployed</option>
-                  </select>
+                    Apply Filters
+                  </button>
                 </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Family Type</label>
-                  <select 
-                    className="form-control"
-                    value={familyType}
-                    onChange={(e) => setFamilyType(e.target.value)}
-                    style={{ height: '48px' }}
-                  >
-                    <option value="">Any family type</option>
-                    <option value="Nuclear">Nuclear</option>
-                    <option value="Joint">Joint</option>
-                  </select>
-                </div>
-
-                <div className="form-group" style={{ marginBottom: 0 }}>
-                  <label className="form-label">Blood Group</label>
-                  <input 
-                    type="text" 
-                    className="form-control" 
-                    placeholder="e.g. B+, O-"
-                    value={bloodGroup}
-                    onChange={(e) => setBloodGroup(e.target.value)}
-                  />
-                </div>
-
-                <button 
-                  onClick={fetchMatches}
-                  className="btn btn-primary"
-                  style={{ width: '100%', borderRadius: '20px', padding: '0.8rem', marginTop: '0.5rem' }}
-                >
-                  Apply Filters
-                </button>
               </div>
             </div>
-          </div>
+          )}
 
           {/* MAIN RESULTS GRID */}
           <div style={{ flex: 2.8, minWidth: '350px', width: '100%' }}>
@@ -350,7 +425,7 @@ export const FindMatch: React.FC = () => {
                       }}>
                         {profile.profile_photo ? (
                           <img 
-                            src={`http://localhost:8000${profile.profile_photo}`} 
+                            src={`${API_URL}${profile.profile_photo}`} 
                             alt={fullName} 
                             style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                           />
@@ -494,7 +569,7 @@ export const FindMatch: React.FC = () => {
                 }}>
                   {selectedProfile.profile_photo ? (
                     <img 
-                      src={`http://localhost:8000${selectedProfile.profile_photo}`} 
+                      src={`${API_URL}${selectedProfile.profile_photo}`} 
                       alt={`${selectedProfile.user.first_name}`} 
                       style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, zIndex: 1 }} 
                     />

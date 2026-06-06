@@ -7,6 +7,7 @@ import {
   ChevronLeft, ChevronRight, X
 } from 'lucide-react';
 import axios from 'axios';
+import { API_URL } from '../config';
 
 interface ProfileDetails {
   id: number;
@@ -80,7 +81,7 @@ export const AdminUserManagement: React.FC = () => {
   const fetchUsers = async () => {
     setLoading(true);
     try {
-      const response = await axios.get(`http://localhost:8000/api/auth/admin/users/`, {
+      const response = await axios.get(`${API_URL}/api/auth/admin/users/`, {
         headers: { 'Authorization': `Token ${adminToken}` },
         params: {
           page: page,
@@ -100,7 +101,7 @@ export const AdminUserManagement: React.FC = () => {
 
   const handleToggleStatus = async (user: User) => {
     try {
-      const response = await axios.post(`http://localhost:8000/api/auth/admin/users/${user.id}/toggle-status/`, {}, {
+      const response = await axios.post(`${API_URL}/api/auth/admin/users/${user.id}/toggle-status/`, {}, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
       
@@ -119,7 +120,7 @@ export const AdminUserManagement: React.FC = () => {
     }
 
     try {
-      await axios.delete(`http://localhost:8000/api/auth/admin/users/${userId}/`, {
+      await axios.delete(`${API_URL}/api/auth/admin/users/${userId}/`, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
       
@@ -147,7 +148,7 @@ export const AdminUserManagement: React.FC = () => {
     if (!selectedUser) return;
 
     try {
-      const response = await axios.patch(`http://localhost:8000/api/auth/admin/users/${selectedUser.id}/`, {
+      const response = await axios.patch(`${API_URL}/api/auth/admin/users/${selectedUser.id}/`, {
         first_name: editFirstName,
         last_name: editLastName,
         email: editEmail || null,

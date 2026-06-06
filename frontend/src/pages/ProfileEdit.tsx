@@ -8,6 +8,7 @@ import {
   User as UserIcon, Briefcase, Plus, Upload, 
   Save, CheckCircle, HeartHandshake, ArrowRight
 } from 'lucide-react';
+import { API_URL } from '../config';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -20,8 +21,8 @@ export const ProfileEdit: React.FC = () => {
   const { token, user, updateUser } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
 
-  const cachedProfile = getCachedData('http://localhost:8000/api/profiles/me/');
-  const cachedPrefs = getCachedData('http://localhost:8000/api/profiles/preferences/');
+  const cachedProfile = getCachedData(`${API_URL}/api/profiles/me/`);
+  const cachedPrefs = getCachedData(`${API_URL}/api/profiles/preferences/`);
 
   const [activeSection, setActiveSection] = useState<SectionKey>('personal');
   const [loading, setLoading] = useState(!cachedProfile || !cachedPrefs);
@@ -84,7 +85,7 @@ export const ProfileEdit: React.FC = () => {
 
   const fetchProfileAndPreferences = async () => {
     try {
-      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
         headers: { Authorization: `Token ${token}` },
       });
 
@@ -107,7 +108,7 @@ export const ProfileEdit: React.FC = () => {
         if (data.profile_photo) setDbPhotoUrl(data.profile_photo);
       }
 
-      const { data: prefData, ok: prefOk } = await cachedFetch('http://localhost:8000/api/profiles/preferences/', {
+      const { data: prefData, ok: prefOk } = await cachedFetch(`${API_URL}/api/profiles/preferences/`, {
         headers: { Authorization: `Token ${token}` },
       });
       if (prefOk && prefData) {
@@ -193,7 +194,7 @@ export const ProfileEdit: React.FC = () => {
     if (photoFile) formData.append('profile_photo', photoFile);
 
     try {
-      const { data, ok } = await cachedFetch('http://localhost:8000/api/profiles/me/', {
+      const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
         method: 'PUT',
         headers: { Authorization: `Token ${token}` },
         body: formData,
@@ -306,7 +307,7 @@ export const ProfileEdit: React.FC = () => {
 
     if (activeSection === 'preferences') {
       try {
-        const { ok } = await cachedFetch('http://localhost:8000/api/profiles/preferences/', {
+        const { ok } = await cachedFetch(`${API_URL}/api/profiles/preferences/`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -424,7 +425,7 @@ export const ProfileEdit: React.FC = () => {
                   {photoPreview ? (
                     <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : dbPhotoUrl ? (
-                    <img src={`http://localhost:8000${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={`${API_URL}${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary-burgundy)', fontFamily: 'var(--font-serif)' }}>
                       {user ? `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase() : 'U'}
@@ -730,7 +731,7 @@ export const ProfileEdit: React.FC = () => {
                           {photoPreview ? (
                             <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : dbPhotoUrl ? (
-                            <img src={`http://localhost:8000${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={`${API_URL}${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <UserIcon size={32} style={{ color: 'var(--text-light)' }} />
                           )}

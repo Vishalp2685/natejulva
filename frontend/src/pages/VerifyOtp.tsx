@@ -1,8 +1,10 @@
+
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { KeyRound, ShieldAlert, BadgeCheck } from 'lucide-react';
 import { Header } from '../components/Header';
+import { API_URL } from '../config';
 import { Footer } from '../components/Footer';
 
 export const VerifyOtp: React.FC = () => {
@@ -74,7 +76,7 @@ export const VerifyOtp: React.FC = () => {
     }
 
     try {
-      const response = await fetch('http://localhost:8000/api/auth/verify-otp/', {
+      const response = await fetch(`${API_URL}/api/auth/verify-otp/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
