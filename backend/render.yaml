@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: natejulva-backend
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn backend.wsgi:application"
