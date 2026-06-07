@@ -37,22 +37,7 @@ export const Header: React.FC = () => {
           style={{ marginRight: '0.25rem' }}
         />
 
-        <span>natejulva</span>
-
-        <span
-          style={{
-            fontSize: '0.9rem',
-            color: '#D4A373',
-            marginLeft: '0.4rem',
-            fontFamily: 'var(--font-body)',
-            fontWeight: 400,
-            background: 'rgba(212, 163, 115, 0.1)',
-            padding: '2px 8px',
-            borderRadius: '12px',
-          }}
-        >
-          Saaथी
-        </span>
+        <span>Saaथी</span>
       </Link>
 
       {/* Hamburger Button */}
@@ -65,9 +50,8 @@ export const Header: React.FC = () => {
 
       {/* Navigation */}
       <nav
-        className={`header-nav ${
-          mobileMenuOpen ? 'mobile-open' : ''
-        }`}
+        className={`header-nav ${mobileMenuOpen ? 'mobile-open' : ''
+          }`}
       >
         {isAuthenticated ? (
           <>

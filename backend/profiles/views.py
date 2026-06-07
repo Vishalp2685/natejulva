@@ -21,7 +21,7 @@ from accounts.models import CustomUser
 # ---------------------------------------------------------------------------
 REQUIRED_PROFILE_FIELDS = [
     'height', 'religion', 'caste', 'marital_status', 'blood_group',
-    'city', 'hometown', 'current_place_of_living', 'education',
+    'city', 'hometown', 'education',
     'occupation', 'working_status', 'annual_salary', 'about_me',
     'family_type',
 ]

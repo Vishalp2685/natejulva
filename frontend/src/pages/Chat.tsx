@@ -3,9 +3,9 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { 
-  Send, MessageSquare, ShieldAlert, HeartHandshake, 
-  MapPin, Clock, Check, CheckCheck, Sparkles 
+import {
+  Send, MessageSquare, ShieldAlert, HeartHandshake,
+  MapPin, Clock, Check, CheckCheck, Sparkles
 } from 'lucide-react';
 import { API_URL } from '../config';
 
@@ -24,7 +24,6 @@ interface PublicProfile {
   caste: string;
   marital_status: string;
   city: string;
-  current_place_of_living: string;
   occupation: string;
   profile_photo: string | null;
 }
@@ -84,10 +83,10 @@ export const Chat: React.FC = () => {
   // 2. Poll messages loop for selected active thread (3.5 seconds)
   useEffect(() => {
     if (!token || !activePartnerId) return;
-    
+
     // Fetch immediately on select
     fetchMessages(activePartnerId, false);
-    
+
     const interval = setInterval(() => {
       fetchMessages(activePartnerId, false);
     }, 3500);
@@ -164,19 +163,19 @@ export const Chat: React.FC = () => {
     try {
       const response = await fetch(`${API_URL}/api/profiles/chat/${activePartnerId}/`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Token ${token}` 
+          'Authorization': `Token ${token}`
         },
         body: JSON.stringify({ content: messageContent })
       });
-      
+
       const data = await response.json();
-      
+
       if (response.ok) {
         // Optimistic update
         setMessages(prev => [...prev, data]);
-        
+
         // Refresh conversations desk to update last message preview
         setConversations(prev => prev.map(c => {
           if (c.profile.user.id === activePartnerId) {
@@ -196,7 +195,7 @@ export const Chat: React.FC = () => {
     setError(null);
     setSearchParams({ user: partnerId.toString() });
     fetchMessages(partnerId, true);
-    
+
     // Optimistically clear unread counts on UI click
     setConversations(prev => prev.map(c => {
       if (c.profile.user.id === partnerId) {
@@ -222,7 +221,7 @@ export const Chat: React.FC = () => {
       <Header />
 
       <main className="main-content" style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '2rem', flex: 1, display: 'flex', flexDirection: 'column' }}>
-        
+
         {loading ? (
           <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh', color: 'var(--primary-burgundy)', fontWeight: 600 }}>
             Loading conversations desk...
@@ -255,7 +254,7 @@ export const Chat: React.FC = () => {
             overflow: 'hidden',
             border: '1px solid rgba(128,10,63,0.03)'
           }}>
-            
+
             {/* LEFT CONVERSATIONS BAR */}
             <div style={{
               flex: 1.1,
@@ -266,7 +265,7 @@ export const Chat: React.FC = () => {
               minWidth: '280px',
               maxWidth: '350px'
             }}>
-              
+
               <div style={{ padding: '1.5rem', borderBottom: '1px solid rgba(128,10,63,0.05)' }}>
                 <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.4rem', color: 'var(--primary-burgundy)', display: 'flex', alignItems: 'center', gap: '0.4rem', margin: 0 }}>
                   <MessageSquare size={18} /> Conversations
@@ -336,18 +335,18 @@ export const Chat: React.FC = () => {
                             )}
                           </div>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <p style={{ 
-                              fontSize: '0.78rem', 
-                              color: c.unread_count > 0 ? 'var(--text-dark)' : 'var(--text-light)', 
+                            <p style={{
+                              fontSize: '0.78rem',
+                              color: c.unread_count > 0 ? 'var(--text-dark)' : 'var(--text-light)',
                               fontWeight: c.unread_count > 0 ? 600 : 400,
-                              margin: 0, 
-                              overflow: 'hidden', 
-                              textOverflow: 'ellipsis', 
-                              whiteSpace: 'nowrap' 
+                              margin: 0,
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              whiteSpace: 'nowrap'
                             }}>
                               {c.last_message ? c.last_message.content : "Click to start chatting..."}
                             </p>
-                            
+
                             {c.unread_count > 0 && (
                               <span style={{
                                 backgroundColor: 'var(--primary-burgundy)',
@@ -384,11 +383,11 @@ export const Chat: React.FC = () => {
               flexDirection: 'column',
               backgroundColor: '#FDFBF7'
             }}>
-              
+
               {activePartnerId && activeConversation ? (
                 /* ACTIVE CHAT CONTENT */
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  
+
                   {/* Active Header bar */}
                   <div style={{
                     padding: '1.25rem 2rem',
@@ -472,12 +471,12 @@ export const Chat: React.FC = () => {
                             <div style={{
                               padding: '0.8rem 1.25rem',
                               borderRadius: isSentByMe ? '20px 20px 4px 20px' : '20px 20px 20px 4px',
-                              background: isSentByMe 
-                                ? 'linear-gradient(135deg, #a31d56 0%, var(--primary-burgundy) 100%)' 
+                              background: isSentByMe
+                                ? 'linear-gradient(135deg, #a31d56 0%, var(--primary-burgundy) 100%)'
                                 : 'var(--white)',
                               color: isSentByMe ? 'var(--white)' : 'var(--text-dark)',
-                              boxShadow: isSentByMe 
-                                ? '0 3px 10px rgba(128, 10, 63, 0.15)' 
+                              boxShadow: isSentByMe
+                                ? '0 3px 10px rgba(128, 10, 63, 0.15)'
                                 : '0 2px 8px rgba(0,0,0,0.03)',
                               border: isSentByMe ? 'none' : '1px solid rgba(128,10,63,0.04)',
                               fontSize: '0.9rem',
@@ -487,7 +486,7 @@ export const Chat: React.FC = () => {
                             }}>
                               {msg.content}
                             </div>
-                            
+
                             <div style={{
                               display: 'flex',
                               alignItems: 'center',

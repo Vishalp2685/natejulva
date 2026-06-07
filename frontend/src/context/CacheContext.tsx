@@ -133,7 +133,7 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // Cache miss. Fetch from server.
     const response = await fetch(url, options);
     const data = await response.json();
-    
+
     if (response.ok) {
       cache.current[url] = {
         data,

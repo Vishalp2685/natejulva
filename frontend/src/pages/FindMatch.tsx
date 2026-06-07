@@ -25,7 +25,6 @@ interface PublicProfile {
   blood_group: string;
   city: string;
   hometown: string;
-  current_place_of_living: string;
   education: string;
   occupation: string;
   working_status: string;
@@ -761,10 +760,6 @@ export const FindMatch: React.FC = () => {
                           <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }}>
                             <td style={{ padding: '0.6rem 0', color: 'var(--text-medium)' }}>Family Type</td>
                             <td style={{ padding: '0.6rem 0', fontWeight: 600, textAlign: 'right' }}>{selectedProfile.family_type}</td>
-                          </tr>
-                          <tr style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }}>
-                            <td style={{ padding: '0.6rem 0', color: 'var(--text-medium)' }}>Location</td>
-                            <td style={{ padding: '0.6rem 0', fontWeight: 600, textAlign: 'right' }}>{selectedProfile.current_place_of_living}</td>
                           </tr>
                         </tbody>
                       </table>

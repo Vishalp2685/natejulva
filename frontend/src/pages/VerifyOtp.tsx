@@ -144,7 +144,7 @@ export const VerifyOtp: React.FC = () => {
             {success ? "Identity Verified" : "Verify your mobile"}
           </h2>
           <p style={{ color: 'var(--text-medium)', fontSize: '0.95rem', marginBottom: '2.5rem' }}>
-            {success ? "Welcome to natejulva matrimonial!" : `Enter the 6-digit code we sent to ${mobile}`}
+            {success ? "Welcome to Saaथी matrimonial!" : `Enter the 6-digit code we sent to ${mobile}`}
           </p>
 
           {/* Direct convenient help card for testing */}

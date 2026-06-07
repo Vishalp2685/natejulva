@@ -4,8 +4,8 @@ import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { 
-  User as UserIcon, Briefcase, Plus, Upload, 
+import {
+  User as UserIcon, Briefcase, Plus, Upload,
   Save, CheckCircle, HeartHandshake, ArrowRight
 } from 'lucide-react';
 import { API_URL } from '../config';
@@ -38,7 +38,6 @@ export const ProfileEdit: React.FC = () => {
   const [bloodGroup, setBloodGroup] = useState(cachedProfile?.blood_group || '');
   const [city, setCity] = useState(cachedProfile?.city || '');
   const [hometown, setHometown] = useState(cachedProfile?.hometown || '');
-  const [currentPlace, setCurrentPlace] = useState(cachedProfile?.current_place_of_living || '');
 
   // Professional Information
   const [education, setEducation] = useState(cachedProfile?.education || '');
@@ -97,7 +96,6 @@ export const ProfileEdit: React.FC = () => {
         setBloodGroup(data.blood_group || '');
         setCity(data.city || '');
         setHometown(data.hometown || '');
-        setCurrentPlace(data.current_place_of_living || '');
         setEducation(data.education || '');
         setOccupation(data.occupation || '');
         setWorkingStatus(data.working_status || 'Employed');
@@ -134,25 +132,24 @@ export const ProfileEdit: React.FC = () => {
   // ─── Validation ─────────────────────────────────────────────────────────────
 
   const validatePersonal = (): string | null => {
-    if (!height.trim())       return 'Height is required in Personal Information.';
-    if (!religion.trim())     return 'Religion is required in Personal Information.';
-    if (!caste.trim())        return 'Caste is required in Personal Information.';
-    if (!bloodGroup.trim())   return 'Blood Group is required in Personal Information.';
-    if (!city.trim())         return 'Current City is required in Personal Information.';
-    if (!hometown.trim())     return 'Hometown is required in Personal Information.';
-    if (!currentPlace.trim()) return 'Current Place of Living is required in Personal Information.';
+    if (!height.trim()) return 'Height is required in Personal Information.';
+    if (!religion.trim()) return 'Religion is required in Personal Information.';
+    if (!caste.trim()) return 'Caste is required in Personal Information.';
+    if (!bloodGroup.trim()) return 'Blood Group is required in Personal Information.';
+    if (!city.trim()) return 'Current City is required in Personal Information.';
+    if (!hometown.trim()) return 'Hometown is required in Personal Information.';
     return null;
   };
 
   const validateProfessional = (): string | null => {
-    if (!education.trim())    return 'Highest Education is required in Professional Information.';
-    if (!occupation.trim())   return 'Occupation is required in Professional Information.';
+    if (!education.trim()) return 'Highest Education is required in Professional Information.';
+    if (!occupation.trim()) return 'Occupation is required in Professional Information.';
     if (!annualSalary.trim()) return 'Annual Salary is required in Professional Information.';
     return null;
   };
 
   const validateAdditional = (): string | null => {
-    if (!aboutMe.trim())           return 'About Me is required in Additional Information.';
+    if (!aboutMe.trim()) return 'About Me is required in Additional Information.';
     if (!photoFile && !dbPhotoUrl) return 'Profile Photo is required in Additional Information.';
     return null;
   };
@@ -184,7 +181,6 @@ export const ProfileEdit: React.FC = () => {
     formData.append('blood_group', bloodGroup);
     formData.append('city', city);
     formData.append('hometown', hometown);
-    formData.append('current_place_of_living', currentPlace);
     formData.append('education', education);
     formData.append('occupation', occupation);
     formData.append('working_status', workingStatus);
@@ -608,11 +604,6 @@ export const ProfileEdit: React.FC = () => {
                       <label className="form-label">Hometown *</label>
                       <input type="text" className="form-control" placeholder="e.g. Pune, Patna"
                         value={hometown} onChange={(e) => setHometown(e.target.value)} />
-                    </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Current Place of Living *</label>
-                      <input type="text" className="form-control" placeholder="e.g. Indiranagar, Bengaluru"
-                        value={currentPlace} onChange={(e) => setCurrentPlace(e.target.value)} />
                     </div>
                   </div>
 

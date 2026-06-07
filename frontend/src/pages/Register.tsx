@@ -144,7 +144,7 @@ export const Register: React.FC = () => {
             <div style={{ position: 'relative', zIndex: 5 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontFamily: 'var(--font-serif)', fontSize: '1.4rem', fontWeight: 600 }}>
                 <Heart size={20} fill="#FFF" />
-                <span>natejulva</span>
+                <span>Saaथी</span>
               </div>
             </div>
 

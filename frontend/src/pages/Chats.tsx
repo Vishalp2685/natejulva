@@ -3,8 +3,8 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
-import { 
-  MessageSquare, ChevronLeft, Send, Check, CheckCheck, Sparkles, 
+import {
+  MessageSquare, ChevronLeft, Send, Check, CheckCheck, Sparkles,
   MessageCircleHeart, Search, MoreVertical, HeartCrack, User, X, ShieldAlert, MapPin
 } from 'lucide-react';
 import { API_URL } from '../config';
@@ -70,7 +70,7 @@ export const Chats: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputText, setInputText] = useState('');
-  
+
   // WhatsApp features
   const [searchQuery, setSearchQuery] = useState('');
   const [myProfile, setMyProfile] = useState<any>(null);
@@ -95,7 +95,7 @@ export const Chats: React.FC = () => {
 
   useEffect(() => {
     if (!window.visualViewport) return;
-    
+
     const handleResize = () => {
       setViewportHeight(window.visualViewport!.height);
       setViewportOffsetTop(window.visualViewport!.offsetTop);
@@ -305,7 +305,7 @@ export const Chats: React.FC = () => {
     const messageContent = inputText.trim();
     const partnerId = selectedChatProfile.user.id;
     setInputText('');
-    
+
     // Create temporary optimistic message
     const tempId = -Date.now();
     const tempMessage: Message = {
@@ -334,15 +334,15 @@ export const Chats: React.FC = () => {
     try {
       const res = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json', 
-          'Authorization': `Token ${token}` 
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Token ${token}`
         },
         body: JSON.stringify({ content: messageContent })
       });
       const data = await res.json();
-      
-      if (res.ok && data) { 
+
+      if (res.ok && data) {
         // Replace temp message with server data in the cache
         updateChatMessage(partnerId, tempId, data);
         setMessages(getChatMessages(partnerId));
@@ -360,11 +360,11 @@ export const Chats: React.FC = () => {
         // Remove temp message from cache on failure
         removeChatMessage(partnerId, tempId);
         setMessages(getChatMessages(partnerId));
-        
+
         fetchConversationsSilently();
         alert("Failed to send message.");
       }
-    } catch (err) { 
+    } catch (err) {
       console.error(err);
       // Remove temp message from cache on error
       removeChatMessage(partnerId, tempId);
@@ -408,7 +408,7 @@ export const Chats: React.FC = () => {
     const today = new Date();
     const yesterday = new Date();
     yesterday.setDate(today.getDate() - 1);
-    
+
     if (d.toDateString() === today.toDateString()) {
       return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     } else if (d.toDateString() === yesterday.toDateString()) {
@@ -432,7 +432,7 @@ export const Chats: React.FC = () => {
         const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
         const isActive = selectedChatProfile?.user.id === profile.user.id;
         const isLastMsgMine = c.last_message ? c.last_message.sender !== profile.user.id : false;
-        
+
         return (
           <div
             key={profile.user.id}
@@ -455,12 +455,12 @@ export const Chats: React.FC = () => {
                 ? <img src={`${API_URL}${profile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : getInitials(profile.user.first_name, profile.user.last_name)}
             </div>
-            
+
             {/* Message Details */}
-            <div style={{ 
-              flex: 1, 
+            <div style={{
+              flex: 1,
               marginLeft: '12px',
-              borderBottom: '1px solid #f2eedf', 
+              borderBottom: '1px solid #f2eedf',
               padding: '12px 0',
               minWidth: 0,
               display: 'flex',
@@ -469,13 +469,13 @@ export const Chats: React.FC = () => {
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ fontSize: '0.95rem', fontWeight: 600, color: '#2B1D24', display: 'block' }}>{fullName}</span>
-                <p style={{ 
-                  margin: '4px 0 0', 
-                  fontSize: '0.82rem', 
-                  color: c.unread_count > 0 ? '#2B1D24' : '#6f6f6f', 
-                  fontWeight: c.unread_count > 0 ? 600 : 400, 
-                  whiteSpace: 'nowrap', 
-                  overflow: 'hidden', 
+                <p style={{
+                  margin: '4px 0 0',
+                  fontSize: '0.82rem',
+                  color: c.unread_count > 0 ? '#2B1D24' : '#6f6f6f',
+                  fontWeight: c.unread_count > 0 ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   display: 'flex',
                   alignItems: 'center'
@@ -483,7 +483,7 @@ export const Chats: React.FC = () => {
                   {c.last_message ? (
                     <>
                       {isLastMsgMine && (
-                        c.last_message.is_read 
+                        c.last_message.is_read
                           ? <CheckCheck size={15} style={{ color: 'var(--primary-burgundy)', marginRight: '4px', flexShrink: 0 }} />
                           : <Check size={15} style={{ color: '#8e8e93', marginRight: '4px', flexShrink: 0 }} />
                       )}
@@ -494,25 +494,25 @@ export const Chats: React.FC = () => {
                   )}
                 </p>
               </div>
-              
+
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '8px', flexShrink: 0 }}>
                 <span style={{ fontSize: '0.72rem', color: c.unread_count > 0 ? 'var(--primary-burgundy)' : '#8e8e93', fontWeight: c.unread_count > 0 ? 600 : 400 }}>
                   {c.last_message ? formatTime(c.last_message.timestamp) : ''}
                 </span>
                 {c.unread_count > 0 ? (
-                  <div style={{ 
-                    marginTop: '4px', 
-                    minWidth: '20px', 
-                    height: '20px', 
-                    borderRadius: '50%', 
-                    backgroundColor: 'var(--primary-burgundy)', 
-                    color: 'white', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    fontSize: '0.72rem', 
+                  <div style={{
+                    marginTop: '4px',
+                    minWidth: '20px',
+                    height: '20px',
+                    borderRadius: '50%',
+                    backgroundColor: 'var(--primary-burgundy)',
+                    color: 'white',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '0.72rem',
                     fontWeight: 700,
-                    padding: '2px' 
+                    padding: '2px'
                   }}>
                     {c.unread_count}
                   </div>
@@ -542,12 +542,12 @@ export const Chats: React.FC = () => {
         position: 'relative'
       }}>
         {/* Chat Header */}
-        <div style={{ 
-          padding: '10px 16px', 
-          borderBottom: '1px solid rgba(128,10,63,0.08)', 
-          backgroundColor: '#f0f2f5', 
-          display: 'flex', 
-          alignItems: 'center', 
+        <div style={{
+          padding: '10px 16px',
+          borderBottom: '1px solid rgba(128,10,63,0.08)',
+          backgroundColor: '#f0f2f5',
+          display: 'flex',
+          alignItems: 'center',
           justifyContent: 'space-between',
           flexShrink: 0,
           zIndex: 10
@@ -570,7 +570,7 @@ export const Chats: React.FC = () => {
               </div>
             </div>
           </div>
-          
+
           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', color: '#54656f', position: 'relative' }}>
             <span
               aria-label="Search"
@@ -578,13 +578,13 @@ export const Chats: React.FC = () => {
             >
               <Search size={19} />
             </span>
-            <button 
+            <button
               onClick={(e) => { e.stopPropagation(); setMenuOpen(!menuOpen); }}
               style={{ background: 'none', border: 'none', padding: 0, color: '#54656f', cursor: 'pointer', display: 'flex', alignItems: 'center' }}
             >
               <MoreVertical size={20} />
             </button>
-            
+
             {/* Options Dropdown Menu */}
             {menuOpen && (
               <div style={{
@@ -652,12 +652,12 @@ export const Chats: React.FC = () => {
         </div>
 
         {/* Messages Area */}
-        <div style={{ 
-          flex: 1, 
-          overflowY: 'auto', 
-          padding: '1.25rem 1.5rem', 
-          display: 'flex', 
-          flexDirection: 'column', 
+        <div style={{
+          flex: 1,
+          overflowY: 'auto',
+          padding: '1.25rem 1.5rem',
+          display: 'flex',
+          flexDirection: 'column',
           gap: '0.6rem',
           backgroundImage: 'radial-gradient(rgba(128,10,63,0.02) 15%, transparent 16%)',
           backgroundSize: '16px 16px',
@@ -690,7 +690,7 @@ export const Chats: React.FC = () => {
                   <span style={{ display: 'block', marginRight: isMine ? '20px' : '0px' }}>
                     {msg.content}
                   </span>
-                  
+
                   {/* Absolute positioned time and status */}
                   <div style={{
                     position: 'absolute',
@@ -716,13 +716,13 @@ export const Chats: React.FC = () => {
         </div>
 
         {/* Message Input */}
-        <form onSubmit={handleSendMessage} style={{ 
-          padding: isMobile ? '8px 16px calc(8px + env(safe-area-inset-bottom)) 16px' : '8px 16px', 
-          backgroundColor: '#f0f2f5', 
-          display: 'flex', 
-          gap: '12px', 
-          alignItems: 'center', 
-          flexShrink: 0 
+        <form onSubmit={handleSendMessage} style={{
+          padding: isMobile ? '8px 16px calc(8px + env(safe-area-inset-bottom)) 16px' : '8px 16px',
+          backgroundColor: '#f0f2f5',
+          display: 'flex',
+          gap: '12px',
+          alignItems: 'center',
+          flexShrink: 0
         }}>
           <input
             type="text"
@@ -730,34 +730,34 @@ export const Chats: React.FC = () => {
             placeholder="Type a message"
             value={inputText}
             onChange={e => setInputText(e.target.value)}
-            style={{ 
-              height: '40px', 
-              borderRadius: '8px', 
-              paddingLeft: '12px', 
-              flex: 1, 
-              fontSize: '0.88rem', 
+            style={{
+              height: '40px',
+              borderRadius: '8px',
+              paddingLeft: '12px',
+              flex: 1,
+              fontSize: '0.88rem',
               border: 'none',
               outline: 'none',
               backgroundColor: 'white'
             }}
           />
-          
+
           <button
             type="submit"
             disabled={!inputText.trim()}
-            style={{ 
-              width: '40px', 
-              height: '40px', 
-              borderRadius: '50%', 
-              background: inputText.trim() ? 'var(--primary-burgundy)' : 'transparent', 
-              border: 'none', 
-              cursor: inputText.trim() ? 'pointer' : 'default', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center', 
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: inputText.trim() ? 'var(--primary-burgundy)' : 'transparent',
+              border: 'none',
+              cursor: inputText.trim() ? 'pointer' : 'default',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
               flexShrink: 0,
               color: inputText.trim() ? 'white' : '#54656f',
-              transition: 'background 0.2s' 
+              transition: 'background 0.2s'
             }}
           >
             <Send size={18} fill={inputText.trim() ? "white" : "none"} color={inputText.trim() ? "white" : "currentColor"} style={{ marginLeft: inputText.trim() ? '2px' : '0' }} />
@@ -874,7 +874,7 @@ export const Chats: React.FC = () => {
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-medium)', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{viewingProfile.about_me}</p>
               </div>
             )}
-            
+
             <button
               onClick={() => {
                 handleUnmatch(viewingProfile.user.id);
@@ -1028,13 +1028,13 @@ export const Chats: React.FC = () => {
                 {selectedChatProfile ? (
                   renderChatBox(false)
                 ) : (
-                  <div style={{ 
-                    flex: 1, 
-                    display: 'flex', 
-                    flexDirection: 'column', 
-                    alignItems: 'center', 
-                    justifyContent: 'center', 
-                    color: '#667781', 
+                  <div style={{
+                    flex: 1,
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: '#667781',
                     backgroundColor: '#f8f9fa',
                     borderBottom: '6px solid var(--primary-burgundy)',
                     padding: '2rem',
@@ -1056,15 +1056,15 @@ export const Chats: React.FC = () => {
                       Saaथी Web
                     </h2>
                     <p style={{ fontSize: '0.88rem', color: '#667781', maxWidth: '480px', margin: '0 0 2rem 0', lineHeight: 1.6 }}>
-                      Send and receive messages to your mutual connections. Messages are fully secure. 
+                      Send and receive messages to your mutual connections. Messages are fully secure.
                       Complete your profile verification badges to find matches quicker.
                     </p>
-                    <div style={{ 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      gap: '6px', 
-                      color: '#8696a0', 
+                    <div style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      color: '#8696a0',
                       fontSize: '0.78rem',
                       marginTop: 'auto'
                     }}>

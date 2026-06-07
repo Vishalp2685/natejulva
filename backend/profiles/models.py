@@ -72,7 +72,6 @@ class UserProfile(models.Model):
             self.blood_group,
             self.city,
             self.hometown,
-            self.current_place_of_living,
             self.education,
             self.occupation,
             self.working_status,

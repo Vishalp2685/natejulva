@@ -60,7 +60,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
           gap: '0.5rem'
         }}>
           <span style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--primary-burgundy)', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-            NateJulva <span style={{ animation: 'heartbeat 1.5s infinite', display: 'inline-block' }}><Heart size={20} fill="var(--primary-burgundy)" /></span>
+            Saaथी <span style={{ animation: 'heartbeat 1.5s infinite', display: 'inline-block' }}><Heart size={20} fill="var(--primary-burgundy)" /></span>
           </span>
           <span style={{
             fontSize: '0.7rem',
@@ -248,7 +248,7 @@ export const AdminLayout: React.FC<AdminLayoutProps> = ({ children }) => {
             gap: '0.5rem'
           }}>
             <span style={{ fontSize: '1.8rem', fontWeight: 700, fontFamily: 'var(--font-serif)', color: 'var(--primary-burgundy)' }}>
-              NateJulva
+              Saaथी
             </span>
           </div>
 
