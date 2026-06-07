@@ -50,7 +50,16 @@ export const Chats: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { token, user } = useAuth();
-  const { cachedFetch, getCachedData } = useCache();
+  const {
+    cachedFetch,
+    getCachedData,
+    getChatMessages,
+    setChatMessages,
+    appendChatMessage,
+    appendChatMessages,
+    updateChatMessage,
+    removeChatMessage
+  } = useCache();
 
   const endpoint = `${API_URL}/api/profiles/chat/conversations/`;
   const cachedInitial = getCachedData(endpoint);
@@ -75,6 +84,7 @@ export const Chats: React.FC = () => {
   const selectedPartnerId = selectedChatProfile?.user.id ?? null;
 
   const [viewportHeight, setViewportHeight] = useState(window.visualViewport ? window.visualViewport.height : window.innerHeight);
+  const [viewportOffsetTop, setViewportOffsetTop] = useState(window.visualViewport ? window.visualViewport.offsetTop : 0);
 
   useEffect(() => {
     if (location.state?.chatProfile) {
@@ -88,6 +98,7 @@ export const Chats: React.FC = () => {
     
     const handleResize = () => {
       setViewportHeight(window.visualViewport!.height);
+      setViewportOffsetTop(window.visualViewport!.offsetTop);
     };
 
     window.visualViewport.addEventListener('resize', handleResize);
@@ -98,6 +109,18 @@ export const Chats: React.FC = () => {
       window.visualViewport!.removeEventListener('scroll', handleResize);
     };
   }, []);
+
+  // Prevent background scrolling when a conversation is open on mobile
+  useEffect(() => {
+    if (selectedChatProfile) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [selectedChatProfile]);
 
   // Scroll to bottom when keyboard opens/closes
   useEffect(() => {
@@ -141,22 +164,40 @@ export const Chats: React.FC = () => {
     };
   }, [token, selectedPartnerId]);
 
+  // Reset message count tracking when partner changes to force scroll to bottom
+  useEffect(() => {
+    prevMessageCount.current = 0;
+  }, [selectedPartnerId]);
+
+  // Handle initial load and caching when a chat is opened
+  useEffect(() => {
+    if (!selectedPartnerId) {
+      setMessages([]);
+      return;
+    }
+    // 1. Instantly read from cache first to avoid flashing / loading spinners
+    const cached = getChatMessages(selectedPartnerId);
+    setMessages(cached);
+
+    // 2. Fetch incrementally in background (or fully if cache is empty)
+    fetchMessages(selectedPartnerId, true, true);
+  }, [selectedPartnerId]);
+
   // F1 + F6: Reduced from 3.5s to 8s, uses stable scalar dep, pauses on hidden
   useEffect(() => {
     if (!token || !selectedPartnerId) return;
-    fetchMessages(selectedPartnerId, false);
 
     let interval: ReturnType<typeof setInterval>;
 
     const startPolling = () => {
-      interval = setInterval(() => fetchMessages(selectedPartnerId, false), 8000);
+      interval = setInterval(() => fetchMessages(selectedPartnerId, false, true), 8000);
     };
 
     const handleVisibility = () => {
       if (document.hidden) {
         clearInterval(interval);
       } else {
-        fetchMessages(selectedPartnerId, false);
+        fetchMessages(selectedPartnerId, false, true);
         startPolling();
       }
     };
@@ -217,20 +258,52 @@ export const Chats: React.FC = () => {
     } catch (err) { console.error(err); }
   };
 
-  const fetchMessages = async (partnerId: number, showLoading: boolean) => {
-    if (showLoading) setMessagesLoading(true);
+  const fetchMessages = async (partnerId: number, showLoading: boolean, isIncremental = true) => {
+    const cached = getChatMessages(partnerId);
+    const hasCache = cached && cached.length > 0;
+
+    // Only show loading state if we have no messages in cache to display
+    if (showLoading && !hasCache) {
+      setMessagesLoading(true);
+    }
+
+    let url = `${API_URL}/api/profiles/chat/${partnerId}/`;
+    if (isIncremental && hasCache) {
+      let lastServerMsgId = null;
+      for (let i = cached.length - 1; i >= 0; i--) {
+        if (cached[i].id > 0) {
+          lastServerMsgId = cached[i].id;
+          break;
+        }
+      }
+      if (lastServerMsgId !== null) {
+        url += `?after_id=${lastServerMsgId}`;
+      }
+    }
+
     try {
-      const res = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, { headers: { 'Authorization': `Token ${token}` } });
+      const res = await fetch(url, { headers: { 'Authorization': `Token ${token}` } });
       const data = await res.json();
-      if (res.ok) setMessages(data);
-    } catch (err) { console.error(err); }
-    finally { if (showLoading) setMessagesLoading(false); }
+      if (res.ok && Array.isArray(data)) {
+        if (isIncremental && hasCache) {
+          appendChatMessages(partnerId, data);
+        } else {
+          setChatMessages(partnerId, data);
+        }
+        setMessages(getChatMessages(partnerId));
+      }
+    } catch (err) {
+      console.error("Failed to fetch messages:", err);
+    } finally {
+      if (showLoading) setMessagesLoading(false);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!inputText.trim() || !selectedChatProfile) return;
     const messageContent = inputText.trim();
+    const partnerId = selectedChatProfile.user.id;
     setInputText('');
     
     // Create temporary optimistic message
@@ -239,26 +312,27 @@ export const Chats: React.FC = () => {
       id: tempId,
       sender: user?.id || 0,
       sender_name: `${user?.first_name || ''} ${user?.last_name || ''}`,
-      receiver: selectedChatProfile.user.id,
+      receiver: partnerId,
       receiver_name: `${selectedChatProfile.user.first_name} ${selectedChatProfile.user.last_name}`,
       content: messageContent,
       timestamp: new Date().toISOString(),
       is_read: false
     };
 
-    // Optimistically update messages list
-    setMessages(prev => [...prev, tempMessage]);
+    // Optimistically append to cache and local state
+    appendChatMessage(partnerId, tempMessage);
+    setMessages(getChatMessages(partnerId));
 
     // Optimistically update conversations list preview
     setConversations(prev => prev.map(c => {
-      if (c.profile.user.id === selectedChatProfile.user.id) {
+      if (c.profile.user.id === partnerId) {
         return { ...c, last_message: tempMessage };
       }
       return c;
     }));
 
     try {
-      const res = await fetch(`${API_URL}/api/profiles/chat/${selectedChatProfile.user.id}/`, {
+      const res = await fetch(`${API_URL}/api/profiles/chat/${partnerId}/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json', 
@@ -269,11 +343,13 @@ export const Chats: React.FC = () => {
       const data = await res.json();
       
       if (res.ok && data) { 
-        // Replace temp message with server data
-        setMessages(prev => prev.map(m => m.id === tempId ? data : m));
+        // Replace temp message with server data in the cache
+        updateChatMessage(partnerId, tempId, data);
+        setMessages(getChatMessages(partnerId));
+
         // Replace temp last message in conversations
         setConversations(prev => prev.map(c => {
-          if (c.profile.user.id === selectedChatProfile.user.id) {
+          if (c.profile.user.id === partnerId) {
             return { ...c, last_message: data };
           }
           return c;
@@ -281,15 +357,18 @@ export const Chats: React.FC = () => {
         // Update caches silently
         fetchConversationsSilently();
       } else {
-        // Remove temp message on failure
-        setMessages(prev => prev.filter(m => m.id !== tempId));
+        // Remove temp message from cache on failure
+        removeChatMessage(partnerId, tempId);
+        setMessages(getChatMessages(partnerId));
+        
         fetchConversationsSilently();
         alert("Failed to send message.");
       }
     } catch (err) { 
       console.error(err);
-      // Remove temp message on error
-      setMessages(prev => prev.filter(m => m.id !== tempId));
+      // Remove temp message from cache on error
+      removeChatMessage(partnerId, tempId);
+      setMessages(getChatMessages(partnerId));
     }
   };
 
@@ -305,6 +384,8 @@ export const Chats: React.FC = () => {
         body: JSON.stringify({ receiver_id: partnerId })
       });
       if (res.ok) {
+        // Empty local chat cache for the unmatched partner
+        setChatMessages(partnerId, []);
         setSelectedChatProfile(null);
         fetchConversationsSilently();
       } else {
@@ -318,7 +399,6 @@ export const Chats: React.FC = () => {
 
   const openChat = (profile: PublicProfile) => {
     setSelectedChatProfile(profile);
-    fetchMessages(profile.user.id, true);
     setConversations(prev => prev.map(c => c.profile.user.id === profile.user.id ? { ...c, unread_count: 0 } : c));
   };
 
@@ -1001,9 +1081,10 @@ export const Chats: React.FC = () => {
 
       {/* On mobile: if a conversation is open, render as a fixed full-screen overlay */}
       {selectedChatProfile && (
-        <div className="mobile-only" style={{
+        <div className="mobile-only-flex" style={{
           position: 'fixed',
-          inset: 0,
+          top: `${viewportOffsetTop}px`,
+          left: '0',
           zIndex: 2000,
           backgroundColor: 'white',
           display: 'flex',

@@ -431,7 +431,16 @@ class ChatMessagesView(APIView):
         messages = Message.objects.filter(
             (Q(sender=user) & Q(receiver_id=receiver_id)) | 
             (Q(sender_id=receiver_id) & Q(receiver=user))
-        ).order_by('timestamp')
+        )
+
+        after_id = request.query_params.get('after_id')
+        if after_id:
+            try:
+                messages = messages.filter(id__gt=int(after_id))
+            except ValueError:
+                pass
+
+        messages = messages.order_by('timestamp')
         
         Message.objects.filter(sender_id=receiver_id, receiver=user, is_read=False).update(is_read=True)
         
