@@ -1,16 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { 
-  MapPin, Search, Heart, 
+import {
+  MapPin, Search, Heart,
   Compass, ShieldAlert, ArrowRight,
-  Bell, X, GraduationCap, Briefcase, Users, BookHeart
+  Bell, X, GraduationCap, Briefcase, Users, BookHeart,
 } from 'lucide-react';
 import { API_URL } from '../config';
 
+// ─────────────────────────────────────────────────────────────────────────────
+// TYPES
+// ─────────────────────────────────────────────────────────────────────────────
 interface RecommendedProfile {
   id: number;
   user: {
@@ -34,87 +43,433 @@ interface RecommendedProfile {
   match_percentage?: number;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
+const PROFILE_URL = `${API_URL}/api/profiles/me/`;
+const RECS_URL = `${API_URL}/api/profiles/recommendations/`;
+const PROFILE_CACHE_TTL = 10 * 60 * 1000; // 10 min
+const RECS_CACHE_TTL = 10 * 60 * 1000;    // 10 min
+const LIKE_URL = `${API_URL}/api/profiles/like/`;
+const SEARCH_DEBOUNCE_MS = 300;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PURE HELPERS — defined outside component so they are never recreated
+// ─────────────────────────────────────────────────────────────────────────────
+function getInitials(firstName: string, lastName: string): string {
+  return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUB-COMPONENTS — memoized to prevent re-renders on parent state changes
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * WHY MEMO: The recommendations grid renders up to 6 cards. Without memo,
+ * every keystroke in the search box re-renders all 6 cards (because searchQuery
+ * state lives in the parent). With memo each card only re-renders when its own
+ * rec data or the sentRequests set changes.
+ */
+interface RecCardProps {
+  rec: RecommendedProfile;
+  isSent: boolean;
+  onOpen: (rec: RecommendedProfile) => void;
+}
+
+const RecCard = React.memo<RecCardProps>(({ rec, isSent, onOpen }) => {
+  const fullName = `${rec.user.first_name} ${rec.user.last_name}`;
+
+  return (
+    <div
+      className="premium-card"
+      onClick={() => onOpen(rec)}
+      style={{ padding: 0, borderRadius: '24px', overflow: 'hidden', cursor: 'pointer' }}
+    >
+      <div style={{
+        height: '180px',
+        background: 'linear-gradient(to bottom, rgba(128,10,63,0.1), rgba(128,10,63,0.85))',
+        position: 'relative',
+        display: 'flex',
+        alignItems: 'flex-end',
+        justifyContent: 'center',
+        color: 'var(--white)',
+      }}>
+        {rec.profile_photo ? (
+          <img
+            src={rec.profile_photo}
+            alt={fullName}
+            loading="lazy" // ← native lazy-loading: defers off-screen images
+            style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', zIndex: 1 }}
+          />
+        ) : (
+          <div style={{
+            width: '100%', height: '100%',
+            background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: '4.5rem', fontFamily: 'var(--font-serif)', fontWeight: 700,
+            opacity: 0.9, letterSpacing: '0.05em', color: '#FFFDF9',
+          }}>
+            {getInitials(rec.user.first_name, rec.user.last_name)}
+          </div>
+        )}
+        <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '80px', background: 'linear-gradient(transparent, rgba(0,0,0,0.65))', zIndex: 2 }} />
+        <div style={{ position: 'relative', zIndex: 3, padding: '1rem', width: '100%', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
+          <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>{fullName}</h3>
+          <span style={{ fontSize: '0.8rem', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+            <MapPin size={12} />{rec.city || 'Not specified'}
+          </span>
+        </div>
+      </div>
+
+      <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.85rem' }}>
+        <div style={{ borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.6rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
+          <div>
+            <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Age / Height</span>
+            <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.user.age} yrs / {rec.height}</strong>
+          </div>
+          <div>
+            <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Religion</span>
+            <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.religion}</strong>
+          </div>
+        </div>
+        <div style={{ borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.6rem' }}>
+          <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Profession</span>
+          <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.occupation || 'Not specified'}</strong>
+        </div>
+        <div style={{ marginTop: '0.25rem' }}>
+          {/*
+           * WHY OPEN MODAL ON CLICK: "Connect Now" previously opened the modal
+           * via setSelectedProfile(rec). Opening the modal and THEN connecting
+           * is better UX (user sees full profile before connecting).
+           * The connect action happens inside the modal with a dedicated button.
+           */}
+          <button
+            onClick={(e) => { e.stopPropagation(); onOpen(rec); }}
+            className="btn btn-primary"
+            disabled={isSent}
+            style={{
+              width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+              opacity: isSent ? 0.6 : 1, cursor: isSent ? 'default' : 'pointer',
+            }}
+          >
+            <Heart size={14} fill="#FFF" />
+            {isSent ? 'Request Sent' : 'Connect Now'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+RecCard.displayName = 'RecCard';
+
+// Mobile card — also memoized
+interface MobileRecCardProps {
+  rec: RecommendedProfile;
+  onOpen: (rec: RecommendedProfile) => void;
+}
+
+const MobileRecCard = React.memo<MobileRecCardProps>(({ rec, onOpen }) => {
+  const fullName = `${rec.user.first_name} ${rec.user.last_name}`;
+  return (
+    <div
+      onClick={() => onOpen(rec)}
+      style={{
+        borderRadius: '20px',
+        background: rec.profile_photo
+          ? 'transparent'
+          : 'linear-gradient(135deg, #8B184F 0%, #D4A373 100%)',
+        overflow: 'hidden',
+        position: 'relative',
+        aspectRatio: '3/4',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
+        cursor: 'pointer',
+      }}
+    >
+      {rec.profile_photo ? (
+        <img
+          src={rec.profile_photo}
+          alt={fullName}
+          loading="lazy"
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        />
+      ) : (
+        <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700 }}>
+          {rec.user.first_name.charAt(0).toUpperCase()}
+        </div>
+      )}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '0.75rem', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
+        <div style={{ color: 'white', fontFamily: 'var(--font-serif)', fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.2 }}>{rec.user.first_name}</div>
+        <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px' }}>
+          <MapPin size={9} /> {rec.city || `${rec.user.age} yrs`}
+        </div>
+      </div>
+    </div>
+  );
+});
+MobileRecCard.displayName = 'MobileRecCard';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MAIN COMPONENT
+// ─────────────────────────────────────────────────────────────────────────────
 export const Dashboard: React.FC = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
-  
-  const cachedProfile = getCachedData(`${API_URL}/api/profiles/me/`);
-  const cachedRecs = getCachedData(`${API_URL}/api/profiles/recommendations/`);
-  
-  const [profileLoading, setProfileLoading] = useState(!cachedProfile || !cachedRecs);
-  const [completeness, setCompleteness] = useState(cachedProfile?.completeness_percentage || 0);
-  const [recommendations, setRecommendations] = useState<RecommendedProfile[]>(cachedRecs?.results || []);
-  const [recMessage, setRecMessage] = useState(cachedRecs?.message || '');
+
+  // ── Seed from cache synchronously before first render ─────────────────────
+  /**
+   * WHY INITIALIZER FUNCTIONS: useState(fn) runs the initializer only once
+   * (on mount), not on every render. Without this, getCachedData would be
+   * called on every render even though we only need it once for initial state.
+   * This also means the page shows cached content immediately with no loading
+   * flash for returning users.
+   */
+  const [completeness, setCompleteness] = useState<number>(
+    () => getCachedData(PROFILE_URL)?.completeness_percentage ?? 0
+  );
+  const [recommendations, setRecommendations] = useState<RecommendedProfile[]>(
+    () => getCachedData(RECS_URL)?.results ?? []
+  );
+  const [recMessage, setRecMessage] = useState<string>(
+    () => getCachedData(RECS_URL)?.message ?? ''
+  );
+
+  /**
+   * WHY SEEDED LOADING STATE: If both caches have data, we skip the loading
+   * screen entirely. The user sees content immediately and the background
+   * refresh (if TTL has expired) happens silently.
+   */
+  const [profileLoading, setProfileLoading] = useState<boolean>(
+    () => !getCachedData(PROFILE_URL) || !getCachedData(RECS_URL)
+  );
+
+  // ── Raw search input (changes on every keystroke) ──────────────────────
   const [searchQuery, setSearchQuery] = useState('');
+  /**
+   * WHY DEBOUNCED QUERY: The filter over recommendations runs on every render
+   * when searchQuery changes. For 6 cards it's trivial, but debouncedQuery
+   * prevents the useMemo filter from re-running on every single keystroke —
+   * important if recommendations grows larger.
+   */
+  const [debouncedQuery, setDebouncedQuery] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [selectedProfile, setSelectedProfile] = useState<RecommendedProfile | null>(null);
   const [connectLoading, setConnectLoading] = useState(false);
+  /**
+   * WHY SET<NUMBER> FOR SENT REQUESTS: A Set gives O(1) `.has()` lookups
+   * on every card render. If this were an array, each card would do O(n)
+   * linear search. The original used Set correctly — we keep it.
+   *
+   * WHY NOT IN CACHE: Sent state is ephemeral per-session. We do NOT cache
+   * POST results. Persisting via CacheContext would require invalidating
+   * the recommendations cache, adding complexity for no benefit.
+   */
   const [sentRequests, setSentRequests] = useState<Set<number>>(new Set());
 
+  // ── In-flight guard — prevents duplicate parallel fetches ─────────────────
+  const fetchingRef = useRef(false);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // SEARCH DEBOUNCE EFFECT
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * WHY DEBOUNCE SEARCH: The filter is client-side (no API call), so debouncing
+   * is about render cost, not network cost. But at 300ms it also prevents the
+   * list from visually flickering on fast typing — better UX.
+   *
+   * WHY CLEANUP: Clears the timer if the user types again before it fires,
+   * and also on unmount to prevent state updates on a dead component.
+   */
+  useEffect(() => {
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedQuery(searchQuery.toLowerCase());
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    };
+  }, [searchQuery]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // DATA FETCH
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * WHY USECALLBACK: fetchDashboardData is called from useEffect. Without
+   * useCallback it gets a new reference every render, causing the useEffect
+   * to re-fire every render (infinite loop risk or at minimum wasted calls).
+   *
+   * WHY PARALLEL FETCH WITH Promise.all:
+   * BEFORE: The original fetched profile, then awaited it, THEN fetched recs.
+   * Total time = RTT(profile) + RTT(recs) — sequential.
+   * AFTER: Both requests fire simultaneously.
+   * Total time = max(RTT(profile), RTT(recs)) — up to 2x faster dashboard load.
+   *
+   * WHY IN-FLIGHT REF: Prevents duplicate fetches from React 18 StrictMode
+   * double-invoke or any other scenario where this is called twice rapidly.
+   *
+   * WHY CACHE FIRST IN EACH BRANCH: Each API call inside cachedFetch already
+   * checks the CacheContext. If the TTL hasn't expired the data is returned
+   * from memory — zero network. The explicit TTL arguments ensure stale data
+   * is never served past 10 minutes.
+   */
+  const fetchDashboardData = useCallback(async () => {
+    if (fetchingRef.current) return;
+    fetchingRef.current = true;
+
+    try {
+      const [profileResult, recsResult] = await Promise.all([
+        cachedFetch(
+          PROFILE_URL,
+          { headers: { Authorization: `Token ${token}` } },
+          PROFILE_CACHE_TTL
+        ),
+        cachedFetch(
+          RECS_URL,
+          { headers: { Authorization: `Token ${token}` } },
+          RECS_CACHE_TTL
+        ),
+      ]);
+
+      if (profileResult.ok && profileResult.data) {
+        setCompleteness(profileResult.data.completeness_percentage ?? 0);
+      }
+      if (recsResult.ok && recsResult.data) {
+        setRecommendations(recsResult.data.results ?? []);
+        setRecMessage(recsResult.data.message ?? '');
+      }
+    } catch (err) {
+      console.error('Error loading dashboard data', err);
+    } finally {
+      fetchingRef.current = false;
+      setProfileLoading(false);
+    }
+  }, [token, cachedFetch]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // AUTH GUARD + INITIAL FETCH
+  // ─────────────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!token) {
       navigate('/register?tab=login');
       return;
     }
     fetchDashboardData();
-  }, [token, navigate]);
+  }, [token, navigate, fetchDashboardData]);
 
-  const fetchDashboardData = async () => {
-    try {
-      const { data: pData, ok: pOk } = await cachedFetch(`${API_URL}/api/profiles/me/`, {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      if (pOk && pData) {
-        setCompleteness(pData.completeness_percentage || 0);
+  // ─────────────────────────────────────────────────────────────────────────
+  // FILTERED RECOMMENDATIONS
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * WHY USEMEMO: The filter + slice runs on every render in the original code
+   * (it's inline JSX). useMemo caches the result and only recomputes when
+   * `recommendations` or `debouncedQuery` changes. This means typing in the
+   * search box (which updates `searchQuery`) does NOT re-run the filter until
+   * the debounce timer fires and `debouncedQuery` updates.
+   */
+  const filteredRecommendations = useMemo(() => {
+    if (!debouncedQuery) return recommendations.slice(0, 6);
+    return recommendations
+      .filter((rec) =>
+        rec.user.first_name.toLowerCase().includes(debouncedQuery) ||
+        rec.user.last_name.toLowerCase().includes(debouncedQuery) ||
+        rec.city.toLowerCase().includes(debouncedQuery) ||
+        rec.religion.toLowerCase().includes(debouncedQuery) ||
+        rec.education.toLowerCase().includes(debouncedQuery)
+      )
+      .slice(0, 6);
+  }, [recommendations, debouncedQuery]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // STABLE DERIVED VALUE
+  // ─────────────────────────────────────────────────────────────────────────
+  /**
+   * WHY USEMEMO NOT INLINE: `completeness === 100` is trivial, but placing
+   * it in useMemo means it's a stable boolean reference used in JSX conditionals.
+   * More importantly, it documents intent — this value drives large branches
+   * of the render tree.
+   */
+  const isProfileComplete = useMemo(() => completeness === 100, [completeness]);
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // HANDLERS
+  // ─────────────────────────────────────────────────────────────────────────
+
+  /**
+   * WHY USECALLBACK: Passed to memoized RecCard and MobileRecCard children.
+   * A new reference every render would break React.memo bailouts on all cards.
+   */
+  const openProfile = useCallback((rec: RecommendedProfile) => {
+    setSelectedProfile(rec);
+  }, []);
+
+  const closeProfile = useCallback(() => {
+    setSelectedProfile(null);
+  }, []);
+
+  /**
+   * WHY USECALLBACK: Same reason — passed to modal and cards.
+   *
+   * WHY DIRECT fetch() NOT cachedFetch(): POST requests must never be cached.
+   * The original correctly used raw fetch() here. We keep that and add the
+   * in-progress `connectLoading` guard to prevent double-clicks from firing
+   * duplicate requests.
+   *
+   * WHY OPTIMISTIC SET UPDATE: We add the profileId to sentRequests immediately
+   * on success without refetching recommendations. A refetch would be an extra
+   * API call just to flip one boolean — wasteful. The local Set update is
+   * sufficient and instant.
+   */
+  const handleConnect = useCallback(
+    async (profileId: number, e?: React.MouseEvent) => {
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      if (sentRequests.has(profileId) || connectLoading) return;
+      setConnectLoading(true);
+      try {
+        const response = await fetch(LIKE_URL, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Token ${token}`,
+          },
+          body: JSON.stringify({ receiver_id: profileId }),
+        });
+        if (response.ok) {
+          /**
+           * WHY FUNCTIONAL UPDATE: Avoids closing over a stale `sentRequests`
+           * value. The functional form always receives the latest Set.
+           */
+          setSentRequests((prev) => new Set(prev).add(profileId));
+        }
+      } catch (err) {
+        console.error('Failed to send connection request', err);
+      } finally {
+        setConnectLoading(false);
       }
+    },
+    [sentRequests, connectLoading, token]
+  );
 
-      const { data: rData, ok: rOk } = await cachedFetch(`${API_URL}/api/profiles/recommendations/`, {
-        headers: { 'Authorization': `Token ${token}` }
-      });
-      if (rOk && rData) {
-        setRecommendations(rData.results || []);
-        setRecMessage(rData.message || '');
-      }
-    } catch (err) {
-      console.error("Error loading dashboard data", err);
-    } finally {
-      setProfileLoading(false);
-    }
-  };
-
-  const getInitials = (firstName: string, lastName: string) => {
-    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
-  };
-
-  const handleConnect = async (profileId: number, _name: string, e?: React.MouseEvent) => {
-    if (e) { e.preventDefault(); e.stopPropagation(); }
-    if (sentRequests.has(profileId) || connectLoading) return;
-    setConnectLoading(true);
-    try {
-      const response = await fetch(`${API_URL}/api/profiles/like/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`
-        },
-        body: JSON.stringify({ receiver_id: profileId })
-      });
-      if (response.ok) {
-        setSentRequests(prev => new Set(prev).add(profileId));
-      }
-    } catch (err) {
-      console.error('Failed to send connection request', err);
-    } finally {
-      setConnectLoading(false);
-    }
-  };
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // LOADING STATE
+  // ─────────────────────────────────────────────────────────────────────────
   if (profileLoading) {
     return (
       <div className="app-container">
         <Header />
-        <main className="main-content" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
-          <div style={{ color: 'var(--primary-burgundy)', fontSize: '1.2rem', fontFamily: 'var(--font-display)', fontWeight: 600 }}>
+        <main
+          className="main-content"
+          style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}
+        >
+          <div
+            style={{
+              color: 'var(--primary-burgundy)',
+              fontSize: '1.2rem',
+              fontFamily: 'var(--font-display)',
+              fontWeight: 600,
+            }}
+          >
             Loading your dashboard details...
           </div>
         </main>
@@ -123,14 +478,15 @@ export const Dashboard: React.FC = () => {
     );
   }
 
-  const isProfileComplete = completeness === 100;
-
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
   return (
     <>
-      {/* Profile Popup Modal */}
+      {/* ── PROFILE DETAIL MODAL ─────────────────────────────────────────── */}
       {selectedProfile && (
         <div
-          onClick={() => { setSelectedProfile(null); }}
+          onClick={closeProfile}
           style={{
             position: 'fixed', inset: 0,
             background: 'rgba(0,0,0,0.55)',
@@ -140,11 +496,11 @@ export const Dashboard: React.FC = () => {
             alignItems: 'center',
             justifyContent: 'center',
             padding: '1rem',
-            animation: 'fade-in 0.2s ease'
+            animation: 'fade-in 0.2s ease',
           }}
         >
           <div
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
             className="hide-scrollbar"
             style={{
               background: 'var(--bg-cream)',
@@ -155,12 +511,17 @@ export const Dashboard: React.FC = () => {
               overflowY: 'auto',
               boxShadow: '0 30px 80px rgba(0,0,0,0.25)',
               position: 'relative',
-              animation: 'fade-in 0.25s cubic-bezier(0.165, 0.84, 0.44, 1)'
+              animation: 'fade-in 0.25s cubic-bezier(0.165, 0.84, 0.44, 1)',
             }}
           >
             <button
-              onClick={() => { setSelectedProfile(null); }}
-              style={{ position: 'absolute', top: '1rem', right: '1rem', zIndex: 10, background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'white' }}
+              onClick={closeProfile}
+              style={{
+                position: 'absolute', top: '1rem', right: '1rem', zIndex: 10,
+                background: 'rgba(0,0,0,0.3)', border: 'none', borderRadius: '50%',
+                width: '34px', height: '34px', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', cursor: 'pointer', color: 'white',
+              }}
             >
               <X size={16} />
             </button>
@@ -168,7 +529,11 @@ export const Dashboard: React.FC = () => {
             {/* Photo Banner */}
             <div style={{ height: '240px', position: 'relative', borderRadius: '28px 28px 0 0', overflow: 'hidden', background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)' }}>
               {selectedProfile.profile_photo ? (
-                <img src={selectedProfile.profile_photo} alt={`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img
+                  src={selectedProfile.profile_photo}
+                  alt={`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`}
+                  style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                />
               ) : (
                 <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '6rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700, opacity: 0.85 }}>
                   {getInitials(selectedProfile.user.first_name, selectedProfile.user.last_name)}
@@ -176,7 +541,9 @@ export const Dashboard: React.FC = () => {
               )}
               <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '120px', background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }} />
               <div style={{ position: 'absolute', bottom: '1.25rem', left: '1.5rem', right: '4rem' }}>
-                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.8rem', color: 'white', margin: 0, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>{`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`}</h2>
+                <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.8rem', color: 'white', margin: 0, textShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+                  {`${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`}
+                </h2>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'rgba(255,255,255,0.85)', fontSize: '0.85rem', marginTop: '2px' }}>
                   <MapPin size={13} />{selectedProfile.city || 'Location not set'}
                 </div>
@@ -186,22 +553,17 @@ export const Dashboard: React.FC = () => {
             {/* Details Body */}
             <div style={{ padding: '1.75rem' }}>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Age</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-dark)' }}>{selectedProfile.user.age} years</div>
-                </div>
-                <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Height</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-dark)' }}>{selectedProfile.height || '—'}</div>
-                </div>
-                <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Religion</div>
-                  <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-dark)' }}>{selectedProfile.religion || '—'}</div>
-                </div>
-                <div style={{ background: 'white', borderRadius: '16px', padding: '1rem', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>Marital Status</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-dark)' }}>{selectedProfile.marital_status || '—'}</div>
-                </div>
+                {[
+                  ['Age', `${selectedProfile.user.age} years`],
+                  ['Height', selectedProfile.height || '—'],
+                  ['Religion', selectedProfile.religion || '—'],
+                  ['Marital Status', selectedProfile.marital_status || '—'],
+                ].map(([label, value]) => (
+                  <div key={label} style={{ background: 'white', borderRadius: '16px', padding: '1rem', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', fontWeight: 700, marginBottom: '4px' }}>{label}</div>
+                    <div style={{ fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-dark)' }}>{value}</div>
+                  </div>
+                ))}
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
@@ -244,7 +606,7 @@ export const Dashboard: React.FC = () => {
 
               <button
                 type="button"
-                onClick={(e) => handleConnect(selectedProfile.user.id, `${selectedProfile.user.first_name} ${selectedProfile.user.last_name}`, e)}
+                onClick={(e) => handleConnect(selectedProfile.user.id, e)}
                 disabled={connectLoading || sentRequests.has(selectedProfile.user.id)}
                 className="btn btn-primary"
                 style={{
@@ -255,24 +617,31 @@ export const Dashboard: React.FC = () => {
                 }}
               >
                 <Heart size={16} fill="#FFF" />
-                {connectLoading ? 'Sending...' : sentRequests.has(selectedProfile.user.id) ? 'Request Sent' : `Connect with ${selectedProfile.user.first_name}`}
+                {connectLoading
+                  ? 'Sending...'
+                  : sentRequests.has(selectedProfile.user.id)
+                  ? 'Request Sent'
+                  : `Connect with ${selectedProfile.user.first_name}`}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* DESKTOP VIEW */}
+      {/* ── DESKTOP VIEW ─────────────────────────────────────────────────── */}
       <div className="app-container desktop-only">
         <Header />
-        <main className="main-content" style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '3rem 2rem' }}>
-
+        <main
+          className="main-content"
+          style={{ maxWidth: '1200px', width: '100%', margin: '0 auto', padding: '3rem 2rem' }}
+        >
           <div style={{ marginBottom: '2.5rem', animation: 'fade-in 0.5s ease' }}>
             <span style={{ fontSize: '0.85rem', color: 'var(--text-light)', textTransform: 'uppercase', letterSpacing: '0.1em', fontWeight: 700 }}>
               NAMASTE
             </span>
             <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.8rem', color: 'var(--primary-burgundy)', fontWeight: 700, lineHeight: 1.2 }}>
-              {user?.first_name}, <span style={{ fontStyle: 'italic', color: 'var(--secondary-gold)' }}>your journey awaits.</span>
+              {user?.first_name},{' '}
+              <span style={{ fontStyle: 'italic', color: 'var(--secondary-gold)' }}>your journey awaits.</span>
             </h1>
           </div>
 
@@ -283,7 +652,7 @@ export const Dashboard: React.FC = () => {
               borderRadius: '24px', padding: '3rem', marginBottom: '3rem',
               boxShadow: 'var(--card-shadow)', display: 'flex', alignItems: 'center',
               gap: '3rem', flexWrap: 'wrap',
-              animation: 'fade-in 0.6s cubic-bezier(0.165, 0.84, 0.44, 1)'
+              animation: 'fade-in 0.6s cubic-bezier(0.165, 0.84, 0.44, 1)',
             }}>
               <div style={{ flex: 1.8, minWidth: '300px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#B23B44', fontWeight: 700, fontSize: '0.9rem', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '1rem' }}>
@@ -302,11 +671,14 @@ export const Dashboard: React.FC = () => {
                     <span>{completeness}%</span>
                   </div>
                   <div style={{ width: '100%', height: '10px', backgroundColor: 'var(--secondary-gold-light)', borderRadius: '10px', overflow: 'hidden' }}>
-                    <div style={{ width: `${completeness}%`, height: '100%', background: 'linear-gradient(90deg, var(--secondary-gold) 0%, var(--primary-burgundy) 100%)', borderRadius: '10px', transition: 'width 0.8s ease' }}></div>
+                    <div style={{ width: `${completeness}%`, height: '100%', background: 'linear-gradient(90deg, var(--secondary-gold) 0%, var(--primary-burgundy) 100%)', borderRadius: '10px', transition: 'width 0.8s ease' }} />
                   </div>
                 </div>
-                <button onClick={() => navigate('/profile/edit')} className="btn btn-primary"
-                  style={{ padding: '0.9rem 2.2rem', borderRadius: '30px', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  onClick={() => navigate('/profile/edit')}
+                  className="btn btn-primary"
+                  style={{ padding: '0.9rem 2.2rem', borderRadius: '30px', display: 'inline-flex', alignItems: 'center', gap: '0.5rem' }}
+                >
                   Complete Profile <ArrowRight size={16} />
                 </button>
               </div>
@@ -314,7 +686,7 @@ export const Dashboard: React.FC = () => {
                 <Compass size={40} style={{ color: 'var(--text-light)', marginBottom: '1rem', strokeWidth: 1.5 }} />
                 <h4 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.2rem', color: 'var(--text-dark)', marginBottom: '0.5rem' }}>Recommendations Locked</h4>
                 <p style={{ fontSize: '0.85rem', color: 'var(--text-medium)', lineHeight: 1.5 }}>
-                  {recMessage || "Please complete all fields under Personal, Professional and Additional details to view compatible matches."}
+                  {recMessage || 'Please complete all fields under Personal, Professional and Additional details to view compatible matches.'}
                 </p>
               </div>
             </div>
@@ -325,98 +697,54 @@ export const Dashboard: React.FC = () => {
               <div className="premium-card" style={{ padding: '1.8rem 2.5rem', marginBottom: '3.5rem', display: 'flex', gap: '1.5rem', alignItems: 'center', flexWrap: 'wrap' }}>
                 <div style={{ position: 'relative', flex: 1, minWidth: '280px' }}>
                   <Search size={18} style={{ position: 'absolute', left: '1.2rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-light)' }} />
-                  <input type="text" className="form-control" style={{ paddingLeft: '3rem' }}
+                  <input
+                    type="text"
+                    className="form-control"
+                    style={{ paddingLeft: '3rem' }}
                     placeholder="Search matches by city, education, religion..."
-                    value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
                 </div>
-                <button className="btn btn-primary" style={{ padding: '0.85rem 2.2rem', borderRadius: '30px' }}>
-                  Search Matches
-                </button>
+                {/*
+                 * WHY REMOVE THE "Search Matches" BUTTON: The original button
+                 * did nothing (it had no onClick handler that used searchQuery).
+                 * The filter is reactive via debouncedQuery. Keeping a dead
+                 * button misleads users. Removed to clean up UX.
+                 * If you want an explicit trigger, wire it to flush debounce.
+                 */}
               </div>
 
               <div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', color: 'var(--primary-burgundy)' }}>Suggested for you</h2>
-                  <span style={{ fontSize: '0.9rem', color: 'var(--primary-burgundy)', fontWeight: 600, cursor: 'pointer' }}>See all matches</span>
+                  <span
+                    style={{ fontSize: '0.9rem', color: 'var(--primary-burgundy)', fontWeight: 600, cursor: 'pointer' }}
+                    onClick={() => navigate('/search')}
+                  >
+                    See all matches
+                  </span>
                 </div>
                 <p style={{ color: 'var(--text-medium)', fontSize: '0.95rem', marginBottom: '2rem' }}>
                   Curated compatibility matches based on your detailed preferences.
                 </p>
 
-                {recommendations.length === 0 ? (
+                {filteredRecommendations.length === 0 ? (
                   <div className="premium-card" style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-medium)' }}>
-                    No compatible matches are currently available with 100% profile completeness in your opposite gender. We will notify you when new users register!
+                    {debouncedQuery
+                      ? `No matches found for "${debouncedQuery}". Try a different search.`
+                      : 'No compatible matches are currently available with 100% profile completeness in your opposite gender. We will notify you when new users register!'}
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '2rem', width: '100%' }}>
-                    {recommendations
-                      .filter(rec => {
-                        const search = searchQuery.toLowerCase();
-                        return (
-                          rec.user.first_name.toLowerCase().includes(search) ||
-                          rec.user.last_name.toLowerCase().includes(search) ||
-                          rec.city.toLowerCase().includes(search) ||
-                          rec.religion.toLowerCase().includes(search) ||
-                          rec.education.toLowerCase().includes(search)
-                        );
-                      })
-                      .slice(0, 6)
-                      .map((rec) => {
-                        const fullName = `${rec.user.first_name} ${rec.user.last_name}`;
-                        return (
-                          <div key={rec.id} className="premium-card"
-                            onClick={() => { setSelectedProfile(rec); }}
-                            style={{ padding: 0, borderRadius: '24px', overflow: 'hidden', cursor: 'pointer' }}>
-                            <div style={{ height: '180px', background: 'linear-gradient(to bottom, rgba(128,10,63,0.1), rgba(128,10,63,0.85))', position: 'relative', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', color: 'var(--white)' }}>
-                              {rec.profile_photo ? (
-                                <img
-                                  src={rec.profile_photo}
-                                  alt={fullName}
-                                  style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', zIndex: 1 }}
-                                />
-                              ) : (
-                                <div style={{ width: '100%', height: '100%', background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '4.5rem', fontFamily: 'var(--font-serif)', fontWeight: 700, opacity: 0.9, letterSpacing: '0.05em', color: '#FFFDF9' }}>
-                                  {getInitials(rec.user.first_name, rec.user.last_name)}
-                                </div>
-                              )}
-                              <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '80px', background: 'linear-gradient(transparent, rgba(0,0,0,0.65))', zIndex: 2 }}></div>
-                              <div style={{ position: 'relative', zIndex: 3, padding: '1rem', width: '100%', textShadow: '0 1px 4px rgba(0,0,0,0.4)' }}>
-                                <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', fontWeight: 700, color: 'var(--white)', margin: 0 }}>{fullName}</h3>
-                                <span style={{ fontSize: '0.8rem', opacity: 0.9, display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                                  <MapPin size={12} />{rec.city || "Not specified"}
-                                </span>
-                              </div>
-                            </div>
-                            <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', fontSize: '0.85rem' }}>
-                              <div style={{ borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.6rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-                                <div>
-                                  <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Age / Height</span>
-                                  <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.user.age} yrs / {rec.height}</strong>
-                                </div>
-                                <div>
-                                  <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Religion</span>
-                                  <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.religion}</strong>
-                                </div>
-                              </div>
-                              <div style={{ borderBottom: '1px solid rgba(128,10,63,0.05)', paddingBottom: '0.6rem' }}>
-                                <span style={{ color: 'var(--text-light)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase' }}>Profession</span>
-                                <strong style={{ color: 'var(--text-dark)', fontWeight: 600 }}>{rec.occupation || "Not specified"}</strong>
-                              </div>
-                              <div style={{ marginTop: '0.25rem' }}>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); setSelectedProfile(rec); }}
-                                  className="btn btn-primary"
-                                  disabled={sentRequests.has(rec.user.id)}
-                                  style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', opacity: sentRequests.has(rec.user.id) ? 0.6 : 1, cursor: sentRequests.has(rec.user.id) ? 'default' : 'pointer' }}
-                                >
-                                  <Heart size={14} fill="#FFF" />
-                                  {sentRequests.has(rec.user.id) ? 'Request Sent' : 'Connect Now'}
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                    {filteredRecommendations.map((rec) => (
+                      <RecCard
+                        key={rec.id}
+                        rec={rec}
+                        isSent={sentRequests.has(rec.user.id)}
+                        onOpen={openProfile}
+                      />
+                    ))}
                   </div>
                 )}
               </div>
@@ -426,7 +754,7 @@ export const Dashboard: React.FC = () => {
         <Footer />
       </div>
 
-      {/* MOBILE VIEW */}
+      {/* ── MOBILE VIEW ──────────────────────────────────────────────────── */}
       <div className="mobile-only mobile-dashboard">
         <div className="mobile-header">
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700, color: '#8B184F', fontSize: '1.2rem' }}>
@@ -446,7 +774,8 @@ export const Dashboard: React.FC = () => {
         <div style={{ marginBottom: '1.5rem' }}>
           <div style={{ fontSize: '0.75rem', color: '#7E7E7E', letterSpacing: '1px', fontWeight: 700, marginBottom: '4px' }}>NAMASTE</div>
           <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.4rem', fontWeight: 400, color: '#2B1D24', margin: 0, lineHeight: 1.2 }}>
-            {user?.first_name}, <span style={{ color: '#901C53' }}>your journey awaits.</span>
+            {user?.first_name},{' '}
+            <span style={{ color: '#901C53' }}>your journey awaits.</span>
           </h1>
         </div>
 
@@ -462,36 +791,24 @@ export const Dashboard: React.FC = () => {
                 <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.6rem', fontWeight: 400, margin: '0 0 4px 0', color: '#2B1D24' }}>Suggested for you</h2>
                 <p style={{ fontSize: '0.85rem', color: '#7E7E7E', margin: 0 }}>Curated matches based on your profile</p>
               </div>
-              <span style={{ color: '#901C53', fontWeight: 600, fontSize: '0.9rem' }} onClick={() => navigate('/search')}>See all</span>
+              <span
+                style={{ color: '#901C53', fontWeight: 600, fontSize: '0.9rem' }}
+                onClick={() => navigate('/search')}
+              >
+                See all
+              </span>
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.85rem', width: '100%' }}>
-              {recommendations.length > 0 ? recommendations.slice(0, 6).map(rec => {
-                const fullName = `${rec.user.first_name} ${rec.user.last_name}`;
-                return (
-                  <div key={rec.id}
-                    onClick={() => { setSelectedProfile(rec); }}
-                    style={{ borderRadius: '20px', background: rec.profile_photo ? 'transparent' : 'linear-gradient(135deg, #8B184F 0%, #D4A373 100%)', overflow: 'hidden', position: 'relative', aspectRatio: '3/4', boxShadow: '0 4px 16px rgba(0,0,0,0.08)', cursor: 'pointer' }}>
-                    {rec.profile_photo ? (
-                      <img src={rec.profile_photo} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '3rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700 }}>
-                        {rec.user.first_name.charAt(0).toUpperCase()}
-                      </div>
-                    )}
-                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '0.75rem', background: 'linear-gradient(transparent, rgba(0,0,0,0.7))' }}>
-                      <div style={{ color: 'white', fontFamily: 'var(--font-serif)', fontSize: '0.9rem', fontWeight: 700, lineHeight: 1.2 }}>{rec.user.first_name}</div>
-                      <div style={{ color: 'rgba(255,255,255,0.8)', fontSize: '0.7rem', display: 'flex', alignItems: 'center', gap: '2px' }}>
-                        <MapPin size={9} /> {rec.city || rec.user.age + ' yrs'}
-                      </div>
-                    </div>
+              {recommendations.length > 0
+                ? recommendations.slice(0, 6).map((rec) => (
+                    <MobileRecCard key={rec.id} rec={rec} onOpen={openProfile} />
+                  ))
+                : (
+                  <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#7E7E7E', fontSize: '0.9rem' }}>
+                    No recommendations yet.
                   </div>
-                );
-              }) : (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '2rem', color: '#7E7E7E', fontSize: '0.9rem' }}>
-                  No recommendations yet.
-                </div>
-              )}
+                )}
             </div>
           </>
         ) : (
@@ -501,8 +818,11 @@ export const Dashboard: React.FC = () => {
             <p style={{ color: '#7E7E7E', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
               Complete your profile ({completeness}%) to unlock recommendations, search features, and begin connecting.
             </p>
-            <button onClick={() => navigate('/profile/edit')} className="btn btn-primary"
-              style={{ width: '100%', padding: '0.9rem', borderRadius: '30px', fontSize: '1rem' }}>
+            <button
+              onClick={() => navigate('/profile/edit')}
+              className="btn btn-primary"
+              style={{ width: '100%', padding: '0.9rem', borderRadius: '30px', fontSize: '1rem' }}
+            >
               Complete Profile
             </button>
           </div>
