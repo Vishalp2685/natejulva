@@ -170,7 +170,6 @@ export const ProfileEdit: React.FC = () => {
   };
 
   // ─── Auto-save Profile (sections 1-3) ──────────────────────────────────────
-  // Called by Next buttons to persist data before advancing to the next section.
 
   const saveProfileData = async (): Promise<boolean> => {
     const formData = new FormData();
@@ -211,12 +210,11 @@ export const ProfileEdit: React.FC = () => {
     }
   };
 
-  // ─── Next Button Handler (validate → save → advance) ───────────────────────
+  // ─── Next Button Handler ────────────────────────────────────────────────────
 
   const handleNextTo = async (target: SectionKey) => {
     setMessage(null);
 
-    // 1. Validate all sections up to the one we are leaving
     const order: SectionKey[] = ['personal', 'professional', 'additional', 'preferences'];
     const currentIndex = order.indexOf(activeSection);
     const prerequisite = order[currentIndex] as SectionKey;
@@ -229,7 +227,6 @@ export const ProfileEdit: React.FC = () => {
       return;
     }
 
-    // 2. Auto-save current section data before advancing
     setNextLoading(true);
     const saved = await saveProfileData();
     setNextLoading(false);
@@ -239,7 +236,6 @@ export const ProfileEdit: React.FC = () => {
       return;
     }
 
-    // 3. Advance to next section
     setActiveSection(target);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
@@ -251,14 +247,12 @@ export const ProfileEdit: React.FC = () => {
     const currentIndex = order.indexOf(activeSection);
     const targetIndex = order.indexOf(target);
 
-    // Always allow going backwards freely (no save needed)
     if (targetIndex <= currentIndex) {
       setMessage(null);
       setActiveSection(target);
       return;
     }
 
-    // Going forward: validate all sections up to (but not including) target
     setMessage(null);
     const prerequisite = order[targetIndex - 1] as SectionKey;
     const validationResult = validateUpTo(prerequisite);
@@ -269,7 +263,6 @@ export const ProfileEdit: React.FC = () => {
       return;
     }
 
-    // Auto-save current section before jumping forward
     setNextLoading(true);
     const saved = await saveProfileData();
     setNextLoading(false);
@@ -338,7 +331,6 @@ export const ProfileEdit: React.FC = () => {
       return;
     }
 
-    // For sections 1-3, reuse saveProfileData
     const saved = await saveProfileData();
     setSaveLoading(false);
     if (saved) {
@@ -421,7 +413,7 @@ export const ProfileEdit: React.FC = () => {
                   {photoPreview ? (
                     <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : dbPhotoUrl ? (
-                    <img src={`${API_URL}${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    <img src={dbPhotoUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary-burgundy)', fontFamily: 'var(--font-serif)' }}>
                       {user ? `${user.first_name.charAt(0)}${user.last_name.charAt(0)}`.toUpperCase() : 'U'}
@@ -466,7 +458,6 @@ export const ProfileEdit: React.FC = () => {
             {/* Sidebar Navigation */}
             <div className="premium-card" style={{ padding: '1rem', gap: '0.25rem', display: 'flex', flexDirection: 'column' }}>
 
-              {/* Personal — always accessible */}
               <button
                 onClick={() => navigateToSection('personal')}
                 disabled={nextLoading}
@@ -484,7 +475,6 @@ export const ProfileEdit: React.FC = () => {
                 Personal Information
               </button>
 
-              {/* Professional — requires Personal valid + saved */}
               <button
                 onClick={() => navigateToSection('professional')}
                 disabled={nextLoading}
@@ -502,7 +492,6 @@ export const ProfileEdit: React.FC = () => {
                 Professional Information
               </button>
 
-              {/* Additional — requires Personal + Professional valid + saved */}
               <button
                 onClick={() => navigateToSection('additional')}
                 disabled={nextLoading}
@@ -520,7 +509,6 @@ export const ProfileEdit: React.FC = () => {
                 Additional Info & Photo
               </button>
 
-              {/* Preferences — requires Personal + Professional + Additional valid + saved */}
               <button
                 onClick={() => navigateToSection('preferences')}
                 disabled={nextLoading}
@@ -722,7 +710,7 @@ export const ProfileEdit: React.FC = () => {
                           {photoPreview ? (
                             <img src={photoPreview} alt="Preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : dbPhotoUrl ? (
-                            <img src={`${API_URL}${dbPhotoUrl}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={dbPhotoUrl} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <UserIcon size={32} style={{ color: 'var(--text-light)' }} />
                           )}

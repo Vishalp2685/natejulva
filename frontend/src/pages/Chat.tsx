@@ -314,7 +314,7 @@ export const Chat: React.FC = () => {
                           flexShrink: 0
                         }}>
                           {c.profile.profile_photo ? (
-                            <img src={`${API_URL}${c.profile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            <img src={c.profile.profile_photo} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                           ) : (
                             <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                               {getInitials(c.profile.user.first_name, c.profile.user.last_name)}
@@ -412,7 +412,16 @@ export const Chat: React.FC = () => {
                         flexShrink: 0
                       }}>
                         {activeConversation.profile.profile_photo ? (
-                          <img src={`${API_URL}${activeConversation.profile.profile_photo}`} alt={`${activeConversation.profile.user.first_name}`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                              <img
+                                src={activeConversation.profile.profile_photo || "/default-avatar.png"}
+                                alt={activeConversation.profile.user.first_name}
+                                loading="lazy"
+                                style={{
+                                  width: '100%',
+                                  height: '100%',
+                                  objectFit: 'cover'
+                                }}
+/>
                         ) : (
                           <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                             {getInitials(activeConversation.profile.user.first_name, activeConversation.profile.user.last_name)}

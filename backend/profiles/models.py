@@ -42,7 +42,11 @@ class UserProfile(models.Model):
         ('Joint', 'Joint'),
     )
     family_type = models.CharField(max_length=15, choices=FAMILY_TYPE_CHOICES, blank=True, null=True)
-    profile_photo = models.ImageField(upload_to='profile_photos/', blank=True, null=True)
+    profile_photo = models.URLField(
+    max_length=1000,
+    blank=True,
+    null=True
+    )   
 
     # Verification Fields
     VERIFICATION_CHOICES = (

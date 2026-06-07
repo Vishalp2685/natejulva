@@ -477,7 +477,7 @@ export const LikesMatches: React.FC = () => {
                     }}>
                       {profile.profile_photo ? (
                         <img 
-                          src={`${API_URL}${profile.profile_photo}`} 
+                          src={`${profile.profile_photo}`} 
                           alt={fullName} 
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
@@ -623,7 +623,7 @@ export const LikesMatches: React.FC = () => {
                     }}>
                       {profile.profile_photo ? (
                         <img 
-                          src={`${API_URL}${profile.profile_photo}`} 
+                          src={`${profile.profile_photo}`} 
                           alt={fullName} 
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                         />
@@ -762,7 +762,7 @@ export const LikesMatches: React.FC = () => {
               justifyContent: 'center'
             }}>
               {selectedChatProfile.profile_photo ? (
-                <img src={`${API_URL}${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={`${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : (
                 <div style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                   {getInitials(selectedChatProfile.user.first_name, selectedChatProfile.user.last_name)}

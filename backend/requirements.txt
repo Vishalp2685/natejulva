@@ -17,3 +17,4 @@ psycopg2-binary==2.9.12
 sqlparse==0.5.5
 asgiref==3.11.1
 tzdata==2025.2
+cloudinary>=1.36.0

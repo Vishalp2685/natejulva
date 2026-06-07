@@ -2,6 +2,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework import status, permissions
 from rest_framework.views import APIView
 from rest_framework.response import Response
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser  # ← ADD THIS
 from django.db.models import Q, Count
 from django.core.cache import cache
 from .models import UserProfile, PartnerPreferences, ProfileLike, Message
@@ -37,20 +38,18 @@ def _complete_profiles_qs(base_qs):
 
 class MyProfileView(APIView):
     permission_classes = [permissions.IsAuthenticated]
+    parser_classes = [MultiPartParser, FormParser, JSONParser]  # ← ADD THIS
 
     def get(self, request):
-        # B4: select_related to avoid lazy-load on nested user serializer
         profile, created = UserProfile.objects.select_related('user').get_or_create(user=request.user)
         serializer = UserProfileSerializer(profile)
         return Response(serializer.data)
 
     def put(self, request):
-        # B4 + B6: select_related; removed redundant re-fetch after save
         profile, created = UserProfile.objects.select_related('user').get_or_create(user=request.user)
         serializer = UserProfileUpdateSerializer(profile, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()
-            # Invalidate recommendations cache
             cache.delete(f"recommendations_{request.user.id}")
             profile.refresh_from_db()
             return Response(UserProfileSerializer(profile).data)

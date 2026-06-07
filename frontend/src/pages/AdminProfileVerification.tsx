@@ -176,10 +176,15 @@ export const AdminProfileVerification: React.FC = () => {
                 alignSelf: 'flex-start'
               }}>
                 {user.profile?.profile_photo ? (
-                  <img 
-                    src={`${API_URL}${user.profile.profile_photo}`} 
+                  <img
+                    src={user.profile.profile_photo}
                     alt="Submission Profile Photo"
-                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    loading="lazy"
+                    style={{
+                      width: '100%',
+                      height: '100%',
+                      objectFit: 'cover'
+                    }}
                   />
                 ) : (
                   <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-light)' }}>

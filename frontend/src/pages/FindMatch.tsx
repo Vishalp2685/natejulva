@@ -472,7 +472,7 @@ export const FindMatch: React.FC = () => {
                         }}>
                           {profile.profile_photo ? (
                             <img
-                              src={`${API_URL}${profile.profile_photo}`}
+                              src={`${profile.profile_photo}`}
                               alt={fullName}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />
@@ -625,7 +625,7 @@ export const FindMatch: React.FC = () => {
                 }}>
                   {selectedProfile.profile_photo ? (
                     <img
-                      src={`${API_URL}${selectedProfile.profile_photo}`}
+                      src={`${selectedProfile.profile_photo}`}
                       alt={`${selectedProfile.user.first_name}`}
                       style={{ width: '100%', height: '100%', objectFit: 'cover', position: 'absolute', top: 0, left: 0, zIndex: 1 }}
                     />

@@ -83,7 +83,15 @@ export const Profile: React.FC = () => {
                     zIndex: 1, position: 'relative',
                   }}>
                     {profile?.profile_photo ? (
-                      <img src={`${API_URL}${profile.profile_photo}`} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img
+                        src={profile.profile_photo}
+                        alt="Profile"
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          objectFit: 'cover'
+                        }}
+                      />
                     ) : (
                       <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--primary-burgundy)', fontFamily: 'var(--font-serif)' }}>
                         {getInitials()}
@@ -244,7 +252,16 @@ export const Profile: React.FC = () => {
               boxShadow: '0 4px 10px rgba(0,0,0,0.1)'
             }}>
               {profile?.profile_photo ? (
-                <img src={`${API_URL}${profile.profile_photo}`} alt="" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+                <img
+                  src={profile.profile_photo}
+                  alt=""
+                  style={{
+                    width: '100%',
+                    height: '100%',
+                    borderRadius: '50%',
+                    objectFit: 'cover'
+                  }}
+                />
               ) : getInitials()}
               <div style={{ 
                 position: 'absolute', bottom: '0', right: '0', 
