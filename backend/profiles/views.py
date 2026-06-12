@@ -31,9 +31,12 @@ def _complete_profiles_qs(base_qs):
     """Filters a UserProfile queryset to only those with every required field filled."""
     qs = base_qs
     for field in REQUIRED_PROFILE_FIELDS:
-        qs = qs.exclude(**{f'{field}__isnull': True}).exclude(**{field: ''})
+        qs = qs.exclude(**{f'{field}__isnull': True})
+        if field != 'height':
+            qs = qs.exclude(**{field: ''})
     qs = qs.exclude(profile_photo='').exclude(profile_photo__isnull=True)
     return qs
+
 
 
 class MyProfileView(APIView):
@@ -255,7 +258,7 @@ class RecommendationsView(APIView):
             # Height check
             if prefs.height:
                 max_possible += 1
-                if prefs.height.lower() in (cand.height or '').lower():
+                if prefs.height.lower() in str(cand.height or '').lower():
                     score += 1
             # Occupation check
             if prefs.occupation:
@@ -358,6 +361,31 @@ class UnmatchProfileView(APIView):
             return Response({"message": "Unmatched successfully."}, status=status.HTTP_200_OK)
         else:
             return Response({"error": "You are not connected with this user."}, status=status.HTTP_400_BAD_REQUEST)
+
+class RejectRequestView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        sender_id = request.data.get('sender_id')  # the person who liked us
+        if not sender_id:
+            return Response({"error": "Sender ID is required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        try:
+            sender = CustomUser.objects.get(id=sender_id)
+        except CustomUser.DoesNotExist:
+            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+            
+        # Delete their like to us
+        deleted_count, _ = ProfileLike.objects.filter(sender=sender, receiver=request.user).delete()
+        
+        # Invalidate recommendations cache for both sender and receiver
+        cache.delete(f"recommendations_{request.user.id}")
+        cache.delete(f"recommendations_{sender_id}")
+        
+        if deleted_count > 0:
+            return Response({"message": "Request rejected successfully."}, status=status.HTTP_200_OK)
+        else:
+            return Response({"error": "No pending request found from this user."}, status=status.HTTP_400_BAD_REQUEST)
 
 class LikesSentView(APIView):
     """B2: Replaced list comprehension N+1 with a single bulk query + select_related."""

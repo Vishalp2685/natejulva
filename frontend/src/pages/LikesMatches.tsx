@@ -2,8 +2,10 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
+import { useDialog } from '../context/DialogContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
+import { ProfilePreview } from '../components/ProfilePreview';
 import { 
   Heart, HeartHandshake, Smile, 
   MapPin, CheckCircle, MessageCircleHeart, Info,
@@ -53,6 +55,7 @@ export const LikesMatches: React.FC = () => {
   const navigate = useNavigate();
   const { token } = useAuth();
   const { cachedFetch, invalidateKey } = useCache();
+  const { showLoading, hideLoading, showAlert, showConfirm } = useDialog();
 
   // Loading states per tab
   const [loadingMatches, setLoadingMatches] = useState(false);
@@ -60,7 +63,6 @@ export const LikesMatches: React.FC = () => {
   const [loadingReceived, setLoadingReceived] = useState(false);
 
   // Tab specific lists
-  const [matchesList, setMatchesList] = useState<Conversation[]>([]);
   const [sentList, setSentList] = useState<PublicProfile[]>([]);
   const [receivedList, setReceivedList] = useState<PublicProfile[]>([]);
 
@@ -72,12 +74,13 @@ export const LikesMatches: React.FC = () => {
 
   const [activeTab, setActiveTab] = useState<'matches' | 'received' | 'sent'>('matches');
   const [loading, setLoading] = useState(true);
-  const [likedProfiles, setLikedProfiles] = useState<PublicProfile[]>([]);
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Chat Integrated States
   const [selectedChatProfile, setSelectedChatProfile] = useState<PublicProfile | null>(null);
+  const [selectedPreviewProfile, setSelectedPreviewProfile] = useState<PublicProfile | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -107,16 +110,12 @@ export const LikesMatches: React.FC = () => {
         try {
           const { data, ok } = await cachedFetch(endpoint, { headers });
           if (ok && data) {
-            // F9: Removed sessionStorage caching — rely on CacheContext
             if (tab === 'matches') {
-              setMatchesList(data);
               setConversations(data);
             } else if (tab === 'received') {
               setReceivedList(data);
-              if (activeTab === 'received') setLikedProfiles(data);
             } else if (tab === 'sent') {
               setSentList(data);
-              if (activeTab === 'sent') setLikedProfiles(data);
             }
           }
         } catch (err) {
@@ -131,12 +130,21 @@ export const LikesMatches: React.FC = () => {
         else if (forceRefreshTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
         await fetchTab(forceRefreshTab, endpoint);
       } else {
-        // F2: Only fetch the active tab on initial load, not all 3
-        let endpoint = '';
-        if (activeTab === 'matches') endpoint = `${API_URL}/api/profiles/chat/conversations/`;
-        else if (activeTab === 'received') endpoint = `${API_URL}/api/profiles/likes-received/`;
-        else if (activeTab === 'sent') endpoint = `${API_URL}/api/profiles/likes-sent/`;
-        await fetchTab(activeTab, endpoint);
+        // Fetch all 3 tabs on initial load in parallel to ensure data is populated immediately
+        const matchesUrl = `${API_URL}/api/profiles/chat/conversations/`;
+        const receivedUrl = `${API_URL}/api/profiles/likes-received/`;
+        const sentUrl = `${API_URL}/api/profiles/likes-sent/`;
+
+        // Always invalidate keys on initial load so the user sees the absolute latest data immediately on page load
+        invalidateKey(matchesUrl);
+        invalidateKey(receivedUrl);
+        invalidateKey(sentUrl);
+
+        await Promise.all([
+          fetchTab('matches', matchesUrl),
+          fetchTab('received', receivedUrl),
+          fetchTab('sent', sentUrl)
+        ]);
       }
     } catch (err) {
       console.error("Failed to fetch matches data", err);
@@ -148,31 +156,10 @@ export const LikesMatches: React.FC = () => {
     }
   };
 
-  // F2: Lazy-load tab data when switching tabs
   const handleTabChange = (tab: 'matches' | 'received' | 'sent') => {
     setActiveTab(tab);
     setSuccessMessage(null);
     setSelectedChatProfile(null);
-
-    if (tab === 'matches') {
-      if (matchesList.length > 0) {
-        setConversations(matchesList);
-      } else {
-        fetchAllData('matches');
-      }
-    } else if (tab === 'received') {
-      if (receivedList.length > 0) {
-        setLikedProfiles(receivedList);
-      } else {
-        fetchAllData('received');
-      }
-    } else if (tab === 'sent') {
-      if (sentList.length > 0) {
-        setLikedProfiles(sentList);
-      } else {
-        fetchAllData('sent');
-      }
-    }
   };
 
   // Touch Handlers for mobile pull-to-refresh
@@ -325,7 +312,6 @@ export const LikesMatches: React.FC = () => {
       const data = await response.json();
       if (response.ok) {
         setConversations(data);
-        setMatchesList(data);
       }
     } catch (err) {
       console.error("Failed to silently load connections list", err);
@@ -379,7 +365,10 @@ export const LikesMatches: React.FC = () => {
   };
 
   const handleLikeBack = async (profileId: number, name: string) => {
+    if (actionLoading) return;
     setSuccessMessage(null);
+    setActionLoading(true);
+    showLoading(`Accepting connection request from ${name}...`);
     try {
       const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/like/`, {
         method: 'POST',
@@ -390,50 +379,156 @@ export const LikesMatches: React.FC = () => {
         body: JSON.stringify({ receiver_id: profileId })
       });
       
+      hideLoading();
       if (ok && data) {
         if (data.mutual_match) {
           setSuccessMessage(`It's a Connection! You and ${name} are now connected! Go to the 'Mutual Connections' tab to celebrate.`);
           
-          const newReceived = receivedList.filter(p => p.user.id !== profileId);
-          setReceivedList(newReceived);
-          setLikedProfiles(newReceived);
-          fetchAllData('matches');
+          const acceptedProfile = receivedList.find(p => p.user.id === profileId);
 
-          alert(`Congratulations! You have connected with ${name}!`);
+          // Remove from receivedList state immediately
+          setReceivedList(prev => prev.filter(p => p.user.id !== profileId));
+          
+          // Prepend to matchesList state immediately
+          if (acceptedProfile) {
+            const newConversation: Conversation = {
+              profile: acceptedProfile,
+              last_message: null,
+              unread_count: 0
+            };
+            setConversations(prev => [newConversation, ...prev]);
+          }
+
+          showAlert("Mutual Connection Established!", `Congratulations! You have connected with ${name}!`);
+        } else {
+          showAlert("Request Accepted", `You have successfully accepted the request from ${name}.`);
         }
+      } else {
+        showAlert("Error", "Failed to accept request. Please try again.");
       }
     } catch (err) {
+      hideLoading();
       console.error("Could not connect to backend to connect back", err);
+      showAlert("Error", "A network error occurred. Please try again.");
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleUnmatch = async (profileId: number, name: string) => {
-    const confirmUnmatch = window.confirm(`Are you sure you want to unmatch with ${name}? This will remove your connection and delete your chat history.`);
-    if (!confirmUnmatch) return;
-
-    try {
-      const { ok } = await cachedFetch(`${API_URL}/api/profiles/unmatch/`, {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${token}` 
-        },
-        body: JSON.stringify({ receiver_id: profileId })
-      });
-      
-      if (ok) {
-        alert(`You have successfully unmatched with ${name}.`);
-        setSelectedChatProfile(null); // Close active chat thread if open
-        
-        const newMatches = matchesList.filter(c => c.profile.user.id !== profileId);
-        setMatchesList(newMatches);
-        setConversations(newMatches);
-      } else {
-        alert("Failed to unmatch. Please try again.");
+    if (actionLoading) return;
+    showConfirm(
+      "Unmatch Partner",
+      `Are you sure you want to unmatch with ${name}? This will remove your connection and delete your chat history.`,
+      async () => {
+        if (actionLoading) return;
+        setActionLoading(true);
+        showLoading(`Unmatching with ${name}...`);
+        try {
+          const { ok } = await cachedFetch(`${API_URL}/api/profiles/unmatch/`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Token ${token}` 
+            },
+            body: JSON.stringify({ receiver_id: profileId })
+          });
+          
+          hideLoading();
+          if (ok) {
+            showAlert("Unmatched Successfully", `You have successfully unmatched with ${name}.`);
+            setSelectedChatProfile(null); // Close active chat thread if open
+            
+            // Remove from matches list immediately
+            setConversations(prev => prev.filter(c => c.profile.user.id !== profileId));
+          } else {
+            showAlert("Error", "Failed to unmatch. Please try again.");
+          }
+        } catch (err) {
+          hideLoading();
+          console.error("Failed to unmatch profile", err);
+          showAlert("Error", "A network error occurred. Please try again.");
+        } finally {
+          setActionLoading(false);
+        }
       }
-    } catch (err) {
-      console.error("Failed to unmatch profile", err);
-    }
+    );
+  };
+
+  const handleRejectRequest = async (profileId: number, name: string) => {
+    if (actionLoading) return;
+    showConfirm(
+      "Reject Request",
+      `Are you sure you want to reject the connection request from ${name}?`,
+      async () => {
+        if (actionLoading) return;
+        setActionLoading(true);
+        showLoading(`Rejecting request from ${name}...`);
+        try {
+          const { ok } = await cachedFetch(`${API_URL}/api/profiles/reject/`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Token ${token}` 
+            },
+            body: JSON.stringify({ sender_id: profileId })
+          });
+          
+          hideLoading();
+          if (ok) {
+            showAlert("Request Rejected", "Request rejected successfully.");
+            // Remove from received requests list immediately
+            setReceivedList(prev => prev.filter(p => p.user.id !== profileId));
+          } else {
+            showAlert("Error", "Failed to reject request.");
+          }
+        } catch (err) {
+          hideLoading();
+          console.error("Error rejecting request", err);
+          showAlert("Error", "A network error occurred. Please try again.");
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    );
+  };
+
+  const handleCancelRequest = async (profileId: number, name: string) => {
+    if (actionLoading) return;
+    showConfirm(
+      "Cancel Request",
+      `Are you sure you want to cancel your connection request to ${name}?`,
+      async () => {
+        if (actionLoading) return;
+        setActionLoading(true);
+        showLoading(`Canceling request to ${name}...`);
+        try {
+          const { ok } = await cachedFetch(`${API_URL}/api/profiles/unmatch/`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Token ${token}` 
+            },
+            body: JSON.stringify({ receiver_id: profileId })
+          });
+          
+          hideLoading();
+          if (ok) {
+            showAlert("Request Cancelled", "Request cancelled successfully.");
+            // Remove from sent requests list immediately
+            setSentList(prev => prev.filter(p => p.user.id !== profileId));
+          } else {
+            showAlert("Error", "Failed to cancel request.");
+          }
+        } catch (err) {
+          hideLoading();
+          console.error("Error cancelling request", err);
+          showAlert("Error", "A network error occurred. Please try again.");
+        } finally {
+          setActionLoading(false);
+        }
+      }
+    );
   };
 
   const getInitials = (firstName: string, lastName: string) => {
@@ -528,7 +623,7 @@ export const LikesMatches: React.FC = () => {
                         <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
                           <div>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
+                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height ? (profile.height.toString().includes('cm') || profile.height.toString().includes("'") ? profile.height : `${profile.height} cm`) : '—'}</strong>
                           </div>
                           <div>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
@@ -565,28 +660,31 @@ export const LikesMatches: React.FC = () => {
                       <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
                         <div style={{ display: 'flex', gap: '0.5rem' }}>
                           <button 
-                            onClick={() => navigate(`/search`)} 
+                            disabled={actionLoading}
+                            onClick={() => setSelectedPreviewProfile(profile)} 
                             className="btn btn-outline"
-                            style={{ flex: 1, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
+                            style={{ flex: 1, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem', opacity: actionLoading ? 0.6 : 1 }}
                           >
                             <Info size={13} />
                             Bio
                           </button>
                           <button 
+                            disabled={actionLoading}
                             onClick={() => {
                               navigate('/chats', { state: { chatProfile: profile } });
                             }}
                             className="btn btn-primary"
-                            style={{ flex: 1.5, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem' }}
+                            style={{ flex: 1.5, padding: '0.65rem', borderRadius: '12px', fontSize: '0.82rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.2rem', opacity: actionLoading ? 0.6 : 1 }}
                           >
                             <MessageSquare size={13} fill="#FFF" />
                             Chat Now
                           </button>
                         </div>
                         <button
+                          disabled={actionLoading}
                           onClick={() => handleUnmatch(profile.user.id, fullName)}
                           className="btn-text"
-                          style={{ fontSize: '0.75rem', color: '#B23B44', marginTop: '0.6rem', width: '100%', textAlign: 'center', fontWeight: 600 }}
+                          style={{ fontSize: '0.75rem', color: '#B23B44', marginTop: '0.6rem', width: '100%', textAlign: 'center', fontWeight: 600, opacity: actionLoading ? 0.6 : 1, cursor: actionLoading ? 'default' : 'pointer' }}
                         >
                           Unmatch Partner
                         </button>
@@ -597,7 +695,7 @@ export const LikesMatches: React.FC = () => {
                 );
               })
             ) : (
-              likedProfiles.map((profile) => {
+              (activeTab === 'received' ? receivedList : sentList).map((profile) => {
                 const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
                 return (
                   <div 
@@ -652,7 +750,7 @@ export const LikesMatches: React.FC = () => {
                         <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '0.5rem', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem' }}>
                           <div>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Age / Height</span>
-                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height}</strong>
+                            <strong style={{ fontWeight: 600 }}>{profile.user.age} yrs / {profile.height ? (profile.height.toString().includes('cm') || profile.height.toString().includes("'") ? profile.height : `${profile.height} cm`) : '—'}</strong>
                           </div>
                           <div>
                             <span style={{ fontSize: '0.7rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block' }}>Religion</span>
@@ -672,32 +770,53 @@ export const LikesMatches: React.FC = () => {
                       <div style={{ marginTop: 'auto', paddingTop: '1.25rem' }}>
                         
                         {activeTab === 'received' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.78rem', color: '#B23B44', fontWeight: 600, backgroundColor: 'var(--accent-pink)', padding: '0.4rem', borderRadius: '10px' }}>
-                              {profile.user.first_name} requested a connection! Connect back.
-                            </span>
-                            <button 
-                              onClick={() => handleLikeBack(profile.user.id, fullName)}
-                              className="btn btn-primary"
-                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                            <button
+                              disabled={actionLoading}
+                              onClick={() => setSelectedPreviewProfile(profile)}
+                              className="btn btn-outline"
+                              style={{ width: '100%', padding: '0.55rem', borderRadius: '12px', fontSize: '0.82rem', opacity: actionLoading ? 0.6 : 1 }}
                             >
-                              <HeartHandshake size={14} fill="#FFF" />
-                              Accept Request & Connect
+                              View Profile
                             </button>
+                            <div style={{ display: 'flex', gap: '0.6rem' }}>
+                              <button 
+                                disabled={actionLoading}
+                                onClick={() => handleLikeBack(profile.user.id, fullName)}
+                                className="btn btn-primary"
+                                style={{ flex: 1, padding: '0.55rem', borderRadius: '12px', fontSize: '0.82rem', opacity: actionLoading ? 0.6 : 1 }}
+                              >
+                                Accept Request
+                              </button>
+                              <button 
+                                disabled={actionLoading}
+                                onClick={() => handleRejectRequest(profile.user.id, fullName)}
+                                className="btn btn-outline"
+                                style={{ flex: 1, padding: '0.55rem', borderRadius: '12px', fontSize: '0.82rem', color: '#B23B44', borderColor: 'rgba(178,59,68,0.2)', opacity: actionLoading ? 0.6 : 1 }}
+                              >
+                                Reject Request
+                              </button>
+                            </div>
                           </div>
                         )}
 
                         {activeTab === 'sent' && (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', textAlign: 'center' }}>
-                            <span style={{ fontSize: '0.78rem', color: 'var(--text-light)', fontWeight: 500 }}>
-                              Connection request pending...
-                            </span>
-                            <button 
-                              onClick={() => navigate(`/search`)}
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                            <button
+                              disabled={actionLoading}
+                              onClick={() => setSelectedPreviewProfile(profile)}
                               className="btn btn-outline"
-                              style={{ width: '100%', padding: '0.65rem', borderRadius: '12px', fontSize: '0.85rem' }}
+                              style={{ width: '100%', padding: '0.55rem', borderRadius: '12px', fontSize: '0.82rem', opacity: actionLoading ? 0.6 : 1 }}
                             >
-                              View Bio
+                              View Profile
+                            </button>
+                            <button 
+                              disabled={actionLoading}
+                              onClick={() => handleCancelRequest(profile.user.id, fullName)}
+                              className="btn btn-outline"
+                              style={{ width: '100%', padding: '0.55rem', borderRadius: '12px', fontSize: '0.82rem', color: '#B23B44', borderColor: 'rgba(178,59,68,0.2)', opacity: actionLoading ? 0.6 : 1 }}
+                            >
+                              Cancel Request
                             </button>
                           </div>
                         )}
@@ -911,7 +1030,9 @@ export const LikesMatches: React.FC = () => {
     );
   };
 
-  const isEmpty = activeTab === 'matches' ? conversations.length === 0 : likedProfiles.length === 0;
+  const isEmpty = activeTab === 'matches' 
+    ? conversations.length === 0 
+    : (activeTab === 'received' ? receivedList.length === 0 : sentList.length === 0);
 
   return (
     <>
@@ -1132,19 +1253,19 @@ export const LikesMatches: React.FC = () => {
           onClick={() => handleTabChange('matches')}
           style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'matches' ? '#FEF0F0' : 'transparent', color: activeTab === 'matches' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'matches' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
         >
-          Matches ({activeTab === 'matches' ? conversations.length : 0})
+          Matches ({conversations.length})
         </button>
         <button 
           onClick={() => handleTabChange('sent')}
           style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'sent' ? '#FEF0F0' : 'transparent', color: activeTab === 'sent' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'sent' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
         >
-          Sent ({activeTab === 'sent' ? likedProfiles.length : 0})
+          Sent ({sentList.length})
         </button>
         <button 
           onClick={() => handleTabChange('received')}
           style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: 'none', background: activeTab === 'received' ? '#FEF0F0' : 'transparent', color: activeTab === 'received' ? '#000' : '#7E7E7E', fontWeight: activeTab === 'received' ? 600 : 500, fontSize: '0.9rem', transition: 'all 0.2s ease' }}
         >
-          Received ({activeTab === 'received' ? likedProfiles.length : 0})
+          Received ({receivedList.length})
         </button>
       </div>
 
@@ -1239,6 +1360,127 @@ export const LikesMatches: React.FC = () => {
         </div>
       )}
     </div>
+      
+      {/* Profile Preview Modal */}
+      {selectedPreviewProfile && (
+        <ProfilePreview
+          profile={selectedPreviewProfile}
+          isOpen={!!selectedPreviewProfile}
+          onClose={() => setSelectedPreviewProfile(null)}
+          customActions={(() => {
+            const profile = selectedPreviewProfile;
+            const fullName = `${profile.user.first_name} ${profile.user.last_name}`;
+            if (activeTab === 'matches') {
+              return (
+                <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    className="profile-preview-btn-connect"
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setSelectedPreviewProfile(null);
+                      navigate('/chats', { state: { chatProfile: profile } });
+                    }}
+                    style={{ flex: 1.5, opacity: actionLoading ? 0.6 : 1 }}
+                  >
+                    <MessageSquare size={16} fill="#FFF" />
+                    Chat Now
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setSelectedPreviewProfile(null);
+                      handleUnmatch(profile.user.id, fullName);
+                    }}
+                    style={{
+                      flex: 1,
+                      height: '48px',
+                      borderRadius: '12px',
+                      color: '#B23B44',
+                      borderColor: 'rgba(178,59,68,0.2)',
+                      opacity: actionLoading ? 0.6 : 1
+                    }}
+                  >
+                    Unmatch Partner
+                  </button>
+                </div>
+              );
+            } else if (activeTab === 'received') {
+              return (
+                <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    className="profile-preview-btn-connect"
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setSelectedPreviewProfile(null);
+                      handleLikeBack(profile.user.id, fullName);
+                    }}
+                    style={{ flex: 1.5, opacity: actionLoading ? 0.6 : 1 }}
+                  >
+                    <HeartHandshake size={16} fill="#FFF" />
+                    Accept Request
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setSelectedPreviewProfile(null);
+                      handleRejectRequest(profile.user.id, fullName);
+                    }}
+                    style={{
+                      flex: 1,
+                      height: '48px',
+                      borderRadius: '12px',
+                      color: '#B23B44',
+                      borderColor: 'rgba(178,59,68,0.2)',
+                      opacity: actionLoading ? 0.6 : 1
+                    }}
+                  >
+                    Reject Request
+                  </button>
+                </div>
+              );
+            } else if (activeTab === 'sent') {
+              return (
+                <div style={{ display: 'flex', gap: '0.75rem', width: '100%' }}>
+                  <button
+                    type="button"
+                    className="profile-preview-btn-connect"
+                    disabled
+                    style={{ flex: 1.5, opacity: 0.6, cursor: 'default' }}
+                  >
+                    Request Pending
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-outline"
+                    disabled={actionLoading}
+                    onClick={() => {
+                      setSelectedPreviewProfile(null);
+                      handleCancelRequest(profile.user.id, fullName);
+                    }}
+                    style={{
+                      flex: 1,
+                      height: '48px',
+                      borderRadius: '12px',
+                      color: '#B23B44',
+                      borderColor: 'rgba(178,59,68,0.2)',
+                      opacity: actionLoading ? 0.6 : 1
+                    }}
+                  >
+                    Cancel Request
+                  </button>
+                </div>
+              );
+            }
+            return null;
+          })()}
+        />
+      )}
     </>
   );
 };

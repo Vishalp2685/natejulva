@@ -1,0 +1,20 @@
+{
+  "name": "natejulva",
+  "version": "1.0.0",
+  "description": "Natejulva is a state-of-the-art matrimonial application designed to facilitate meaningful connections with verified profiles, featuring premium search, real-time messaging, compatibility matching, and subscription management.",
+  "homepage": "https://github.com/Vishalp2685/natejulva#readme",
+  "bugs": {
+    "url": "https://github.com/Vishalp2685/natejulva/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Vishalp2685/natejulva.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}

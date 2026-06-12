@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { API_URL } from '../config';
+import { useDialog } from '../context/DialogContext';
 
 interface ProfileDetails {
   id: number;
@@ -28,6 +29,7 @@ interface UserSubscription {
 export const AdminMembershipManagement: React.FC = () => {
   const navigate = useNavigate();
   const { adminToken } = useAdminAuth();
+  const { showLoading, hideLoading, showAlert, showConfirm } = useDialog();
   
   const [users, setUsers] = useState<UserSubscription[]>([]);
   const [loading, setLoading] = useState(true);
@@ -73,28 +75,33 @@ export const AdminMembershipManagement: React.FC = () => {
   };
 
   const handleCancelPremium = async (user: UserSubscription) => {
-    if (!window.confirm(`Are you sure you want to cancel the Premium membership for ${user.first_name} ${user.last_name}?`)) {
-      return;
-    }
-
-    try {
-      const response = await axios.post(`${API_URL}/api/auth/admin/users/${user.id}/update-membership/`, {
-        is_premium: false
-      }, {
-        headers: { 'Authorization': `Token ${adminToken}` }
-      });
-
-      alert(response.data.message);
-      fetchSubscriptions();
-    } catch (err) {
-      alert('Error cancelling premium subscription.');
-    }
+    showConfirm(
+      'Cancel Premium Membership',
+      `Are you sure you want to cancel the Premium membership for ${user.first_name} ${user.last_name}?`,
+      async () => {
+        showLoading("Cancelling premium subscription...");
+        try {
+          const response = await axios.post(`${API_URL}/api/auth/admin/users/${user.id}/update-membership/`, {
+            is_premium: false
+          }, {
+            headers: { 'Authorization': `Token ${adminToken}` }
+          });
+          hideLoading();
+          showAlert('Success', response.data.message || 'Subscription cancelled successfully.');
+          fetchSubscriptions();
+        } catch (err) {
+          hideLoading();
+          showAlert('Error', 'Error cancelling premium subscription.');
+        }
+      }
+    );
   };
 
   const handleUpgradeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUser) return;
 
+    showLoading("Upgrading member...");
     try {
       const response = await axios.post(`${API_URL}/api/auth/admin/users/${selectedUser.id}/update-membership/`, {
         is_premium: true,
@@ -103,12 +110,13 @@ export const AdminMembershipManagement: React.FC = () => {
       }, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
-
-      alert(response.data.message);
+      hideLoading();
+      showAlert('Success', response.data.message || 'Subscription upgraded successfully.');
       setIsUpgradeModalOpen(false);
       fetchSubscriptions();
     } catch (err) {
-      alert('Error upgrading subscription.');
+      hideLoading();
+      showAlert('Error', 'Error upgrading subscription.');
     }
   };
 

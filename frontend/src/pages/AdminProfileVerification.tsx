@@ -3,10 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import { useAdminAuth } from '../context/AdminAuthContext';
 import { AdminLayout } from '../components/AdminLayout';
 import { API_URL } from '../config';
-import { 
-  Check, X, Image, User, Calendar, MapPin
-} from 'lucide-react';
+import { Check, X, Image, User, Calendar, MapPin } from 'lucide-react';
 import axios from 'axios';
+import { useDialog } from '../context/DialogContext';
 
 interface ProfileDetails {
   id: number;
@@ -36,6 +35,7 @@ interface UserVerification {
 export const AdminProfileVerification: React.FC = () => {
   const navigate = useNavigate();
   const { adminToken } = useAdminAuth();
+  const { showLoading, hideLoading, showAlert } = useDialog();
   
   const [users, setUsers] = useState<UserVerification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -84,6 +84,7 @@ export const AdminProfileVerification: React.FC = () => {
   const handleVerification = async (userId: number, status: 'approved' | 'rejected') => {
     const remarks = remarksState[userId] || '';
     
+    showLoading(status === 'approved' ? "Approving profile..." : "Rejecting profile...");
     try {
       await axios.post(`${API_URL}/api/auth/admin/users/${userId}/verify-profile/`, {
         verification_status: status,
@@ -91,11 +92,12 @@ export const AdminProfileVerification: React.FC = () => {
       }, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
-      
-      alert(`Profile ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
+      hideLoading();
+      showAlert('Success', `Profile ${status === 'approved' ? 'approved' : 'rejected'} successfully.`);
       fetchSubmissions();
     } catch (err) {
-      alert('Error updating profile verification status.');
+      hideLoading();
+      showAlert('Error', 'Error updating profile verification status.');
     }
   };
 

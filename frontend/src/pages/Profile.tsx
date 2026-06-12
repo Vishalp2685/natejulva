@@ -143,7 +143,7 @@ export const Profile: React.FC = () => {
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Height</span>
-                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.height || '—'}</p>
+                    <p style={{ margin: '4px 0 0 0', fontSize: '1.05rem', fontWeight: 600 }}>{profile?.height ? (profile.height.toString().includes('cm') || profile.height.toString().includes("'") ? profile.height : `${profile.height} cm`) : '—'}</p>
                   </div>
                   <div>
                     <span style={{ color: 'var(--text-light)', fontSize: '0.8rem', textTransform: 'uppercase', fontWeight: 700 }}>Religion</span>
@@ -292,7 +292,7 @@ export const Profile: React.FC = () => {
         <InfoSection title="Personal" items={[
           { label: 'Age', value: user?.age ? `${user.age}` : '—' },
           { label: 'Gender', value: user?.gender || '—' },
-          { label: 'Height', value: profile?.height || '—' },
+          { label: 'Height', value: profile?.height ? (profile.height.toString().includes('cm') || profile.height.toString().includes("'") ? profile.height : `${profile.height} cm`) : '—' },
           { label: 'Religion', value: profile?.religion || '—' },
           { label: 'Caste', value: profile?.caste || '—' },
           { label: 'Marital Status', value: profile?.marital_status || '—' },

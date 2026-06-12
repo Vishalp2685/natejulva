@@ -1,8 +1,9 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { AdminAuthProvider, useAdminAuth } from './context/AdminAuthContext';
 import { CacheProvider } from './context/CacheContext';
+import { DialogProvider } from './context/DialogContext';
 
 import { Landing } from './pages/Landing';
 import { Register } from './pages/Register';
@@ -42,9 +43,19 @@ const AdminProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children
   return isAdminAuthenticated ? <>{children}</> : <Navigate to="/admin/login" />;
 };
 
+// Scroll to top on route change
+const ScrollToTop: React.FC = () => {
+  const { pathname } = useLocation();
+  React.useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [pathname]);
+  return null;
+};
+
 function AppRoutes() {
   return (
     <Router>
+      <ScrollToTop />
       <Routes>
         <Route path="/" element={<Landing />} />
         <Route path="/register" element={<Register />} />
@@ -154,9 +165,11 @@ function App() {
   return (
     <AuthProvider>
       <CacheProvider>
-        <AdminAuthProvider>
-          <AppRoutes />
-        </AdminAuthProvider>
+        <DialogProvider>
+          <AdminAuthProvider>
+            <AppRoutes />
+          </AdminAuthProvider>
+        </DialogProvider>
       </CacheProvider>
     </AuthProvider>
   );

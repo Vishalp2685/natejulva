@@ -207,10 +207,40 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         if (path.includes('/profiles/like/')) {
           Object.keys(cache.current).forEach((key) => {
-            if (key.includes('/profiles/recommendations/')) keysToInvalidate.push(key);
+            if (
+              key.includes('/profiles/recommendations/') ||
+              key.includes('/profiles/likes-sent/') ||
+              key.includes('/profiles/chat/conversations/')
+            ) {
+              keysToInvalidate.push(key);
+            }
+          });
+        } else if (path.includes('/profiles/unmatch/')) {
+          Object.keys(cache.current).forEach((key) => {
+            if (
+              key.includes('/profiles/recommendations/') ||
+              key.includes('/profiles/likes-sent/') ||
+              key.includes('/profiles/chat/conversations/')
+            ) {
+              keysToInvalidate.push(key);
+            }
+          });
+        } else if (path.includes('/profiles/reject/')) {
+          Object.keys(cache.current).forEach((key) => {
+            if (
+              key.includes('/profiles/likes-received/') ||
+              key.includes('/profiles/recommendations/')
+            ) {
+              keysToInvalidate.push(key);
+            }
           });
         } else if (path.includes('/profiles/me/') || path.match(/\/profiles\/\d+\/$/)) {
           keysToInvalidate.push(url);
+          Object.keys(cache.current).forEach((key) => {
+            if (key.includes('/profiles/recommendations/')) {
+              keysToInvalidate.push(key);
+            }
+          });
         } else {
           Object.keys(cache.current).forEach((key) => {
             if (key.includes('/api/profiles/') && !key.includes('/chat/')) {
@@ -226,6 +256,11 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
 
         try {
           const response = await fetch(url, options);
+          
+          if (response.status === 401) {
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          }
+
           const text = await response.text();
           const data = text ? JSON.parse(text) : null;
           return { data, ok: response.ok };
@@ -290,6 +325,11 @@ export const CacheProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       const fetchPromise: Promise<CachedResponse> = (async () => {
         try {
           const response = await fetch(url, options);
+
+          if (response.status === 401) {
+            window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+          }
+
           const text = await response.text();
           const data = text ? JSON.parse(text) : null;
 

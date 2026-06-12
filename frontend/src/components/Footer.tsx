@@ -12,7 +12,7 @@ export const Footer: React.FC = () => {
     }}>
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '0.4rem', color: 'var(--primary-burgundy)', fontFamily: 'var(--font-serif)', fontSize: '1.2rem', fontWeight: 700, marginBottom: '0.5rem' }}>
         <Heart fill="#800A3F" size={16} />
-        <span>Saaथी</span>
+        <span>NateJulva</span>
       </div>
       <p style={{ fontSize: '0.85rem', color: 'var(--text-light)' }}>
         &copy; {new Date().getFullYear()} Saathi Marriage Bureau. All rights reserved.

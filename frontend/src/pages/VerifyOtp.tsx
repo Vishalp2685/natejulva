@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useDialog } from '../context/DialogContext';
 import { KeyRound, ShieldAlert, BadgeCheck } from 'lucide-react';
 import { Header } from '../components/Header';
 import { API_URL } from '../config';
@@ -11,6 +12,7 @@ export const VerifyOtp: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { login } = useAuth();
+  const { showAlert } = useDialog();
 
   const mobile = searchParams.get('mobile') || '';
   const mockOtp = searchParams.get('otp') || '';
@@ -243,7 +245,7 @@ export const VerifyOtp: React.FC = () => {
                 Didn't receive the code?{' '}
                 <button 
                   type="button" 
-                  onClick={() => alert(`Your code is: ${mockOtp || '123456'}`)} 
+                  onClick={() => showAlert('Test OTP Code', `Your mock OTP code is: ${mockOtp || '123456'}`)} 
                   className="btn-text" 
                   style={{ fontSize: '0.85rem', padding: 0 }}
                 >

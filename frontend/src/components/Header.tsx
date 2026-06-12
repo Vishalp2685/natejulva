@@ -37,7 +37,7 @@ export const Header: React.FC = () => {
           style={{ marginRight: '0.25rem' }}
         />
 
-        <span>Saaथी</span>
+        <span>NateJulva</span>
       </Link>
 
       {/* Hamburger Button */}

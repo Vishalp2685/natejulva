@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useContext } from 'react';
+import React, { createContext, useState, useEffect, useContext, useCallback } from 'react';
 
 export interface AdminUser {
   id: number;
@@ -49,12 +49,21 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAdminUser(newUser);
   };
 
-  const logoutAdmin = () => {
+  const logoutAdmin = useCallback(() => {
     localStorage.removeItem('admin_token');
     localStorage.removeItem('admin_user');
     setAdminToken(null);
     setAdminUser(null);
-  };
+  }, []);
+
+  useEffect(() => {
+    const handleAdminUnauthorized = () => {
+      logoutAdmin();
+    };
+
+    window.addEventListener('admin:unauthorized', handleAdminUnauthorized);
+    return () => window.removeEventListener('admin:unauthorized', handleAdminUnauthorized);
+  }, [logoutAdmin]);
 
   return (
     <AdminAuthContext.Provider 

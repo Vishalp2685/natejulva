@@ -8,9 +8,11 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
+import { useDialog } from '../context/DialogContext';
 import { Header } from '../components/Header';
 import { Footer } from '../components/Footer';
-import { Heart, MapPin, X, Filter, ShieldClose } from 'lucide-react';
+import { ProfilePreview } from '../components/ProfilePreview';
+import { Heart, MapPin, Filter } from 'lucide-react';
 import { API_URL } from '../config';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -239,7 +241,7 @@ const ProfileCard = React.memo<ProfileCardProps>(({ profile, onOpen, onLike }) =
               Age / Height
             </span>
             <strong style={{ fontWeight: 600 }}>
-              {profile.user.age} yrs / {profile.height}
+              {profile.user.age} yrs / {profile.height ? (profile.height.toString().includes('cm') || profile.height.toString().includes("'") ? profile.height : `${profile.height} cm`) : '—'}
             </strong>
           </div>
           <div>
@@ -294,6 +296,7 @@ export const FindMatch: React.FC = () => {
   const navigate = useNavigate();
   const { token, user } = useAuth();
   const { cachedFetch, getCachedData } = useCache();
+  const { showLoading, hideLoading, showAlert } = useDialog();
 
   // ── Stable derived value — never triggers re-renders ──────────────────────
   /**
@@ -524,8 +527,12 @@ export const FindMatch: React.FC = () => {
    * re-fetch just to flip one boolean, saving one API call per like action.
    */
   const handleLike = useCallback(
-    async (profileId: number, e: React.MouseEvent) => {
-      e.stopPropagation();
+    async (profileId: number, e?: React.MouseEvent) => {
+      if (e) {
+        e.stopPropagation();
+        e.preventDefault();
+      }
+      showLoading("Sending connection request...");
       try {
         const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/like/`, {
           method: 'POST',
@@ -537,11 +544,12 @@ export const FindMatch: React.FC = () => {
         });
         // No TTL — POST should not be cached
 
+        hideLoading();
         if (ok && data) {
           if (data.mutual_match) {
-            alert('Mutual Connection Established! You and this partner are now connected!');
+            showAlert('Mutual Connection Established!', 'You and this partner are now mutually connected!');
           } else {
-            alert('Connection request sent successfully!');
+            showAlert('Request Sent', 'Connection request sent successfully!');
           }
 
           // Optimistic update — no re-fetch needed
@@ -553,12 +561,16 @@ export const FindMatch: React.FC = () => {
           setSelectedProfile((prev) =>
             prev && prev.user.id === profileId ? { ...prev, liked_by_me: true } : prev
           );
+        } else {
+          showAlert("Error", "Failed to send connection request. Please try again.");
         }
       } catch (err) {
+        hideLoading();
         console.error('Failed to send connection request', err);
+        showAlert("Error", "A network error occurred. Please try again.");
       }
     },
-    [token, cachedFetch]
+    [token, cachedFetch, showLoading, hideLoading, showAlert, setProfiles, setSelectedProfile]
   );
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -770,9 +782,6 @@ export const FindMatch: React.FC = () => {
               justifyContent: 'center',
               gap: '0.5rem',
               padding: '0.85rem',
-              position: 'sticky',
-              top: '0',
-              zIndex: 100,
               transition: 'all 300ms ease',
             }}
           >
@@ -997,389 +1006,56 @@ export const FindMatch: React.FC = () => {
 
       {/* PROFILE DETAIL MODAL */}
       {selectedProfileId && (
-        <div
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(43, 29, 36, 0.6)',
-            backdropFilter: 'blur(8px)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '2rem',
-          }}
-        >
-          <div
-            className="animate-fade-in"
-            style={{
-              backgroundColor: 'var(--white)',
-              borderRadius: '24px',
-              maxWidth: '850px',
-              width: '100%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
-              position: 'relative',
-              display: 'flex',
-              flexDirection: 'column',
-            }}
-          >
-            {/* Close button */}
-            <button
-              onClick={closeProfileDetails}
+        <>
+          {detailLoading || !selectedProfile ? (
+            <div
               style={{
-                position: 'absolute',
-                top: '1.25rem',
-                right: '1.25rem',
-                backgroundColor: 'rgba(255,255,255,0.9)',
-                color: 'var(--text-dark)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '36px',
-                height: '36px',
+                position: 'fixed',
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                backgroundColor: 'rgba(43, 29, 36, 0.65)',
+                backdropFilter: 'blur(8px)',
+                zIndex: 1000,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer',
-                boxShadow: '0 2px 10px rgba(0,0,0,0.1)',
-                zIndex: 20,
+                padding: '2rem',
               }}
+              onClick={closeProfileDetails}
             >
-              <X size={18} />
-            </button>
-
-            {detailLoading || !selectedProfile ? (
               <div
                 style={{
-                  textAlign: 'center',
-                  padding: '6rem',
+                  backgroundColor: '#FAF6F0',
+                  borderRadius: '24px',
+                  padding: '4rem 6rem',
                   color: 'var(--primary-burgundy)',
                   fontWeight: 600,
+                  boxShadow: '0 20px 60px rgba(0,0,0,0.15)',
+                  position: 'relative',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '1rem',
                 }}
+                onClick={(e) => e.stopPropagation()}
               >
-                Loading profile details...
+                <div className="spinner" style={{ borderTopColor: 'var(--primary-burgundy)' }} />
+                <span>Loading profile details...</span>
               </div>
-            ) : (
-              <div>
-                {/* Header banner */}
-                <div
-                  style={{
-                    height: '240px',
-                    background:
-                      'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)',
-                    position: 'relative',
-                    display: 'flex',
-                    alignItems: 'flex-end',
-                    padding: '2rem',
-                    color: 'var(--white)',
-                  }}
-                >
-                  {selectedProfile.profile_photo ? (
-                    <img
-                      src={selectedProfile.profile_photo}
-                      alt={selectedProfile.user.first_name}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        zIndex: 1,
-                      }}
-                    />
-                  ) : (
-                    <div
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '6rem',
-                        fontFamily: 'var(--font-serif)',
-                        color: 'rgba(255,255,255,0.15)',
-                        fontWeight: 700,
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                      }}
-                    >
-                      {getInitials(
-                        selectedProfile.user.first_name,
-                        selectedProfile.user.last_name
-                      )}
-                    </div>
-                  )}
-
-                  <div
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      background: 'linear-gradient(to bottom, rgba(0,0,0,0.1), rgba(0,0,0,0.75))',
-                      zIndex: 2,
-                    }}
-                  />
-
-                  <div
-                    style={{
-                      position: 'relative',
-                      zIndex: 3,
-                      width: '100%',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-end',
-                      textShadow: '0 1px 4px rgba(0,0,0,0.5)',
-                    }}
-                  >
-                    <div>
-                      <span
-                        className="badge-premium"
-                        style={{
-                          display: 'inline-block',
-                          marginBottom: '0.5rem',
-                          background: 'rgba(212, 163, 115, 0.35)',
-                          color: 'var(--white)',
-                          border: 'none',
-                        }}
-                      >
-                        100% Completed
-                      </span>
-                      <h2
-                        style={{
-                          fontFamily: 'var(--font-serif)',
-                          fontSize: '2.2rem',
-                          fontWeight: 700,
-                          margin: 0,
-                        }}
-                      >
-                        {selectedProfile.user.first_name} {selectedProfile.user.last_name}
-                      </h2>
-                      <span
-                        style={{
-                          fontSize: '0.9rem',
-                          opacity: 0.9,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '0.25rem',
-                          marginTop: '0.25rem',
-                        }}
-                      >
-                        <MapPin size={14} />
-                        {selectedProfile.city}
-                      </span>
-                    </div>
-
-                    <button
-                      onClick={(e) => handleLike(selectedProfile.user.id, e)}
-                      className="btn btn-primary"
-                      disabled={selectedProfile.liked_by_me}
-                      style={{
-                        borderRadius: '30px',
-                        padding: '0.7rem 1.8rem',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '0.4rem',
-                        boxShadow: 'none',
-                        background: selectedProfile.liked_by_me
-                          ? 'rgba(255,255,255,0.2)'
-                          : 'linear-gradient(135deg, #a31d56 0%, var(--primary-burgundy) 100%)',
-                        color: 'var(--white)',
-                        border: selectedProfile.liked_by_me
-                          ? '1.5px solid rgba(255,255,255,0.3)'
-                          : 'none',
-                      }}
-                    >
-                      <Heart size={15} fill={selectedProfile.liked_by_me ? '#FFF' : 'none'} />
-                      {selectedProfile.liked_by_me
-                        ? 'Connection Requested'
-                        : 'Send Connection Request'}
-                    </button>
-                  </div>
-                </div>
-
-                {/* Body */}
-                <div style={{ padding: '2.5rem 3rem' }}>
-                  <div style={{ marginBottom: '2rem' }}>
-                    <h4
-                      style={{
-                        fontFamily: 'var(--font-serif)',
-                        fontSize: '1.25rem',
-                        color: 'var(--primary-burgundy)',
-                        marginBottom: '0.5rem',
-                        borderBottom: '1px solid rgba(128,10,63,0.05)',
-                        paddingBottom: '0.4rem',
-                      }}
-                    >
-                      About Me
-                    </h4>
-                    <p
-                      style={{
-                        color: 'var(--text-medium)',
-                        fontSize: '0.95rem',
-                        lineHeight: 1.6,
-                        fontStyle: 'italic',
-                      }}
-                    >
-                      "{selectedProfile.about_me}"
-                    </p>
-                  </div>
-
-                  <div
-                    style={{
-                      display: 'grid',
-                      gridTemplateColumns: '1fr 1fr',
-                      gap: '2.5rem',
-                      marginBottom: '2rem',
-                    }}
-                  >
-                    {/* Personal Info */}
-                    <div>
-                      <h4
-                        style={{
-                          fontFamily: 'var(--font-serif)',
-                          fontSize: '1.25rem',
-                          color: 'var(--primary-burgundy)',
-                          marginBottom: '0.8rem',
-                          borderBottom: '1px solid rgba(128,10,63,0.05)',
-                          paddingBottom: '0.4rem',
-                        }}
-                      >
-                        Personal Information
-                      </h4>
-                      <table
-                        style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}
-                      >
-                        <tbody>
-                          {[
-                            ['Age', `${selectedProfile.user.age} yrs`],
-                            ['Gender', selectedProfile.user.gender],
-                            ['Height', selectedProfile.height],
-                            [
-                              'Religion / Caste',
-                              `${selectedProfile.religion} (${selectedProfile.caste})`,
-                            ],
-                            ['Marital Status', selectedProfile.marital_status],
-                            ['Blood Group', selectedProfile.blood_group],
-                            ['Hometown', selectedProfile.hometown],
-                          ].map(([label, value]) => (
-                            <tr
-                              key={label}
-                              style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }}
-                            >
-                              <td
-                                style={{ padding: '0.6rem 0', color: 'var(--text-medium)' }}
-                              >
-                                {label}
-                              </td>
-                              <td
-                                style={{
-                                  padding: '0.6rem 0',
-                                  fontWeight: 600,
-                                  textAlign: 'right',
-                                }}
-                              >
-                                {value}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Professional Info */}
-                    <div>
-                      <h4
-                        style={{
-                          fontFamily: 'var(--font-serif)',
-                          fontSize: '1.25rem',
-                          color: 'var(--primary-burgundy)',
-                          marginBottom: '0.8rem',
-                          borderBottom: '1px solid rgba(128,10,63,0.05)',
-                          paddingBottom: '0.4rem',
-                        }}
-                      >
-                        Professional Information
-                      </h4>
-                      <table
-                        style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}
-                      >
-                        <tbody>
-                          {[
-                            ['Education', selectedProfile.education],
-                            ['Occupation', selectedProfile.occupation],
-                            ['Working Status', selectedProfile.working_status],
-                            ['Annual Salary', selectedProfile.annual_salary],
-                            ['Family Type', selectedProfile.family_type],
-                          ].map(([label, value]) => (
-                            <tr
-                              key={label}
-                              style={{ borderBottom: '1px solid rgba(0,0,0,0.03)' }}
-                            >
-                              <td
-                                style={{ padding: '0.6rem 0', color: 'var(--text-medium)' }}
-                              >
-                                {label}
-                              </td>
-                              <td
-                                style={{
-                                  padding: '0.6rem 0',
-                                  fontWeight: 600,
-                                  textAlign: 'right',
-                                }}
-                              >
-                                {value}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Privacy notice */}
-                  <div
-                    style={{
-                      backgroundColor: 'rgba(212,163,115,0.08)',
-                      border: '1px dashed var(--secondary-gold)',
-                      borderRadius: '16px',
-                      padding: '1.25rem',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '1rem',
-                      color: '#8c6031',
-                      fontSize: '0.88rem',
-                      fontWeight: 600,
-                      marginBottom: '1rem',
-                    }}
-                  >
-                    <ShieldClose size={24} style={{ color: 'var(--primary-burgundy)' }} />
-                    <div>
-                      <span
-                        style={{
-                          color: 'var(--primary-burgundy)',
-                          display: 'block',
-                          fontWeight: 700,
-                        }}
-                      >
-                        Mobile Number Masked for Privacy
-                      </span>
-                      For security, you cannot view this person's phone number. Connect with them
-                      to initiate contact or request compatibility unlock!
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+            </div>
+          ) : (
+            <ProfilePreview
+              profile={selectedProfile}
+              isOpen={!!selectedProfileId}
+              onClose={closeProfileDetails}
+              onConnect={(userId, e) => handleLike(userId, e!)}
+              isConnected={selectedProfile?.liked_by_me}
+              isConnectLoading={false}
+            />
+          )}
+        </>
       )}
 
       <Footer />

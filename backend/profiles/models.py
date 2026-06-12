@@ -2,21 +2,107 @@ from django.db import models
 from django.conf import settings
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.core.validators import MinValueValidator, MaxValueValidator
+
+
+EDUCATION_LEVEL_CHOICES = (
+    ('10th Pass', '10th Pass'),
+    ('12th Pass', '12th Pass'),
+    ('ITI', 'ITI'),
+    ('Diploma', 'Diploma'),
+    ('Undergraduate (Pursuing)', 'Undergraduate (Pursuing)'),
+    ('Bachelor\'s Degree (B.A., B.Com., B.Sc., B.E./B.Tech, BBA, BCA, etc.)', 'Bachelor\'s Degree (B.A., B.Com., B.Sc., B.E./B.Tech, BBA, BCA, etc.)'),
+    ('Postgraduate (Pursuing)', 'Postgraduate (Pursuing)'),
+    ('Master\'s Degree (M.A., M.Com., M.Sc., M.E./M.Tech, MBA, MCA, etc.)', 'Master\'s Degree (M.A., M.Com., M.Sc., M.E./M.Tech, MBA, MCA, etc.)'),
+    ('M.Phil.', 'M.Phil.'),
+    ('Ph.D.', 'Ph.D.'),
+    ('Other', 'Other'),
+)
+
+OCCUPATION_CATEGORY_CHOICES = (
+    ('Student', 'Student'),
+    ('Software Engineer / Developer', 'Software Engineer / Developer'),
+    ('Teacher / Professor', 'Teacher / Professor'),
+    ('Doctor', 'Doctor'),
+    ('Nurse', 'Nurse'),
+    ('Pharmacist', 'Pharmacist'),
+    ('Lawyer', 'Lawyer'),
+    ('Chartered Accountant', 'Chartered Accountant'),
+    ('Banker', 'Banker'),
+    ('Government Employee', 'Government Employee'),
+    ('Business Owner', 'Business Owner'),
+    ('Entrepreneur', 'Entrepreneur'),
+    ('Farmer', 'Farmer'),
+    ('Sales Professional', 'Sales Professional'),
+    ('Marketing Professional', 'Marketing Professional'),
+    ('Designer', 'Designer'),
+    ('Architect', 'Architect'),
+    ('Civil Engineer', 'Civil Engineer'),
+    ('Mechanical Engineer', 'Mechanical Engineer'),
+    ('Electrical Engineer', 'Electrical Engineer'),
+    ('Data Analyst', 'Data Analyst'),
+    ('Data Scientist', 'Data Scientist'),
+    ('Consultant', 'Consultant'),
+    ('Police / Defense Personnel', 'Police / Defense Personnel'),
+    ('Content Creator', 'Content Creator'),
+    ('Freelancer', 'Freelancer'),
+    ('Homemaker', 'Homemaker'),
+    ('Skilled Worker / Technician', 'Skilled Worker / Technician'),
+    ('Retired', 'Retired'),
+    ('Unemployed', 'Unemployed'),
+    ('Other', 'Other'),
+)
+
+ANNUAL_SALARY_RANGE_CHOICES = (
+    ('Prefer Not to Say', 'Prefer Not to Say'),
+    ('Below ₹2 LPA', 'Below ₹2 LPA'),
+    ('₹2–4 LPA', '₹2–4 LPA'),
+    ('₹4–6 LPA', '₹4–6 LPA'),
+    ('₹6–8 LPA', '₹6–8 LPA'),
+    ('₹8–12 LPA', '₹8–12 LPA'),
+    ('₹12–18 LPA', '₹12–18 LPA'),
+    ('₹18–25 LPA', '₹18–25 LPA'),
+    ('₹25–40 LPA', '₹25–40 LPA'),
+    ('₹40–60 LPA', '₹40–60 LPA'),
+    ('₹60 LPA–₹1 Crore', '₹60 LPA–₹1 Crore'),
+    ('Above ₹1 Crore', 'Above ₹1 Crore'),
+)
 
 class UserProfile(models.Model):
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='profile')
     
+    BLOOD_GROUP_CHOICES = (
+        ('A+', 'A+'),
+        ('A-', 'A-'),
+        ('B+', 'B+'),
+        ('B-', 'B-'),
+        ('AB+', 'AB+'),
+        ('AB-', 'AB-'),
+        ('O+', 'O+'),
+        ('O-', 'O-'),
+        ('Unknown', 'Unknown'),
+        ('Prefer Not to Say', 'Prefer Not to Say'),
+    )
+
     # Personal Information
-    height = models.CharField(max_length=15, blank=True, null=True)  # e.g. "5'9\"" or "175 cm"
+    height = models.PositiveIntegerField(
+        blank=True, 
+        null=True, 
+        validators=[MinValueValidator(100), MaxValueValidator(250)]
+    )  # Height in cm
     religion = models.CharField(max_length=50, blank=True, null=True)
+    religion_category = models.CharField(max_length=50, blank=True, null=True)
+    religion_other = models.CharField(max_length=50, blank=True, null=True)
     caste = models.CharField(max_length=50, blank=True, null=True)
+    caste_category = models.CharField(max_length=50, blank=True, null=True)
+    caste_other = models.CharField(max_length=50, blank=True, null=True)
     
     MARITAL_STATUS_CHOICES = (
         ('Unmarried', 'Unmarried'),
         ('Divorced', 'Divorced'),
     )
     marital_status = models.CharField(max_length=15, choices=MARITAL_STATUS_CHOICES, blank=True, null=True)
-    blood_group = models.CharField(max_length=10, blank=True, null=True)
+    blood_group = models.CharField(max_length=20, choices=BLOOD_GROUP_CHOICES, blank=True, null=True)
     city = models.CharField(max_length=100, blank=True, null=True)
     hometown = models.CharField(max_length=100, blank=True, null=True)
     current_place_of_living = models.CharField(max_length=100, blank=True, null=True)
@@ -24,6 +110,9 @@ class UserProfile(models.Model):
     # Professional Information
     education = models.CharField(max_length=150, blank=True, null=True)
     occupation = models.CharField(max_length=150, blank=True, null=True)
+    occupation_other = models.CharField(max_length=150, blank=True, null=True)
+    education_level = models.CharField(max_length=150, choices=EDUCATION_LEVEL_CHOICES, blank=True, null=True)
+    occupation_category = models.CharField(max_length=150, choices=OCCUPATION_CATEGORY_CHOICES, blank=True, null=True)
     
     WORKING_STATUS_CHOICES = (
         ('Employed', 'Employed'),
@@ -33,6 +122,7 @@ class UserProfile(models.Model):
     )
     working_status = models.CharField(max_length=20, choices=WORKING_STATUS_CHOICES, blank=True, null=True)
     annual_salary = models.CharField(max_length=50, blank=True, null=True)  # e.g. "12 LPA" or "₹1,200,000"
+    annual_salary_range = models.CharField(max_length=50, choices=ANNUAL_SALARY_RANGE_CHOICES, blank=True, null=True)
     
     # Additional Information
     about_me = models.TextField(blank=True, null=True)

@@ -2,10 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCache } from '../context/CacheContext';
+import { useDialog } from '../context/DialogContext';
 import { Header } from '../components/Header';
+import { ProfilePreview } from '../components/ProfilePreview';
 import {
   MessageSquare, ChevronLeft, Send, Check, CheckCheck, Sparkles,
-  MessageCircleHeart, Search, MoreVertical, HeartCrack, User, X, ShieldAlert, MapPin
+  MessageCircleHeart, Search, MoreVertical, HeartCrack, User, X, ShieldAlert
 } from 'lucide-react';
 import { API_URL } from '../config';
 interface PublicProfile {
@@ -60,6 +62,7 @@ export const Chats: React.FC = () => {
     updateChatMessage,
     removeChatMessage
   } = useCache();
+  const { showLoading, hideLoading, showAlert, showConfirm } = useDialog();
 
   const endpoint = `${API_URL}/api/profiles/chat/conversations/`;
   const cachedInitial = getCachedData(endpoint);
@@ -70,6 +73,14 @@ export const Chats: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
   const [inputText, setInputText] = useState('');
+
+  const getProfilePhoto = (photoUrl: string | null) => {
+    if (!photoUrl) return '';
+    if (photoUrl.startsWith('http://') || photoUrl.startsWith('https://')) {
+      return photoUrl;
+    }
+    return `${API_URL}${photoUrl}`;
+  };
 
   // WhatsApp features
   const [searchQuery, setSearchQuery] = useState('');
@@ -362,7 +373,7 @@ export const Chats: React.FC = () => {
         setMessages(getChatMessages(partnerId));
 
         fetchConversationsSilently();
-        alert("Failed to send message.");
+        showAlert("Error", "Failed to send message. Please check your connection and try again.");
       }
     } catch (err) {
       console.error(err);
@@ -373,28 +384,37 @@ export const Chats: React.FC = () => {
   };
 
   const handleUnmatch = async (partnerId: number) => {
-    if (!window.confirm("Are you sure you want to unmatch this profile? This will delete your chat history.")) return;
-    try {
-      const res = await fetch(`${API_URL}/api/profiles/unmatch/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Token ${token}`
-        },
-        body: JSON.stringify({ receiver_id: partnerId })
-      });
-      if (res.ok) {
-        // Empty local chat cache for the unmatched partner
-        setChatMessages(partnerId, []);
-        setSelectedChatProfile(null);
-        fetchConversationsSilently();
-      } else {
-        const data = await res.json();
-        alert(data.error || "Failed to unmatch.");
+    showConfirm(
+      "Unmatch Profile",
+      "Are you sure you want to unmatch this profile? This will delete your chat history.",
+      async () => {
+        showLoading("Unmatching profile...");
+        try {
+          const { data, ok } = await cachedFetch(`${API_URL}/api/profiles/unmatch/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Token ${token}`
+            },
+            body: JSON.stringify({ receiver_id: partnerId })
+          });
+          hideLoading();
+          if (ok) {
+            // Empty local chat cache for the unmatched partner
+            setChatMessages(partnerId, []);
+            setSelectedChatProfile(null);
+            fetchConversationsSilently();
+            showAlert("Success", "You have successfully unmatched with this profile.");
+          } else {
+            showAlert("Error", data?.error || "Failed to unmatch.");
+          }
+        } catch (err) {
+          hideLoading();
+          console.error("Failed to unmatch", err);
+          showAlert("Error", "A network error occurred. Please try again.");
+        }
       }
-    } catch (err) {
-      console.error("Failed to unmatch", err);
-    }
+    );
   };
 
   const openChat = (profile: PublicProfile) => {
@@ -452,7 +472,7 @@ export const Chats: React.FC = () => {
             {/* Avatar container */}
             <div style={{ width: '48px', height: '48px', borderRadius: '50%', overflow: 'hidden', background: '#FEF0F0', flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8B184F', fontWeight: 700, fontSize: '1rem' }}>
               {profile.profile_photo
-                ? <img src={`${API_URL}${profile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ? <img src={getProfilePhoto(profile.profile_photo)} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : getInitials(profile.user.first_name, profile.user.last_name)}
             </div>
 
@@ -560,7 +580,7 @@ export const Chats: React.FC = () => {
             )}
             <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#FEF0F0', flexShrink: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', color: '#8B184F', fontWeight: 700 }}>
               {selectedChatProfile.profile_photo
-                ? <img src={`${API_URL}${selectedChatProfile.profile_photo}`} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ? <img src={getProfilePhoto(selectedChatProfile.profile_photo)} alt={partnerName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                 : getInitials(selectedChatProfile.user.first_name, selectedChatProfile.user.last_name)}
             </div>
             <div>
@@ -769,141 +789,37 @@ export const Chats: React.FC = () => {
 
   const renderProfileModal = () => {
     if (!viewingProfile) return null;
-    const fullName = `${viewingProfile.user.first_name} ${viewingProfile.user.last_name}`;
     return (
-      <div
-        onClick={() => setViewingProfile(null)}
-        style={{
-          position: 'fixed',
-          inset: 0,
-          background: 'rgba(0,0,0,0.55)',
-          backdropFilter: 'blur(6px)',
-          zIndex: 3000,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: '1rem',
-          animation: 'fade-in 0.2s ease'
-        }}
-      >
-        <div
-          onClick={e => e.stopPropagation()}
-          className="hide-scrollbar"
-          style={{
-            background: 'var(--bg-cream)',
-            borderRadius: '28px',
-            width: '100%',
-            maxWidth: '500px',
-            maxHeight: '85vh',
-            overflowY: 'auto',
-            boxShadow: '0 30px 80px rgba(0,0,0,0.25)',
-            position: 'relative'
-          }}
-        >
-          {/* Close button */}
+      <ProfilePreview
+        profile={viewingProfile}
+        isOpen={!!viewingProfile}
+        onClose={() => setViewingProfile(null)}
+        customActions={
           <button
-            onClick={() => setViewingProfile(null)}
+            onClick={() => {
+              handleUnmatch(viewingProfile.user.id);
+              setViewingProfile(null);
+            }}
             style={{
-              position: 'absolute',
-              top: '1rem',
-              right: '1rem',
-              zIndex: 10,
-              background: 'rgba(0,0,0,0.3)',
+              width: '100%',
+              padding: '12px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(178,59,68,0.08)',
+              color: '#B23B44',
               border: 'none',
-              borderRadius: '50%',
-              width: '34px',
-              height: '34px',
+              fontWeight: 700,
+              fontSize: '0.9rem',
+              cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              cursor: 'pointer',
-              color: 'white'
+              gap: '8px'
             }}
           >
-            <X size={16} />
+            <HeartCrack size={16} /> Unmatch Profile
           </button>
-
-          {/* Photo Banner */}
-          <div style={{ height: '220px', position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg, var(--primary-burgundy) 0%, #D4A373 100%)' }}>
-            {viewingProfile.profile_photo ? (
-              <img src={`${API_URL}${viewingProfile.profile_photo}`} alt={fullName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '5rem', fontFamily: 'var(--font-serif)', color: 'white', fontWeight: 700 }}>
-                {getInitials(viewingProfile.user.first_name, viewingProfile.user.last_name)}
-              </div>
-            )}
-            <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: '80px', background: 'linear-gradient(transparent, rgba(0,0,0,0.75))' }} />
-            <div style={{ position: 'absolute', bottom: '1rem', left: '1.5rem', right: '1.5rem' }}>
-              <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.6rem', color: 'white', margin: 0, textShadow: '0 2px 4px rgba(0,0,0,0.4)' }}>{fullName}</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', color: 'rgba(255,255,255,0.85)', fontSize: '0.82rem', marginTop: '2px' }}>
-                <MapPin size={13} /> {viewingProfile.city || 'Location not set'}
-              </div>
-            </div>
-          </div>
-
-          {/* Details Body */}
-          <div style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-              <div style={{ background: 'white', borderRadius: '12px', padding: '0.8rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Age / Gender</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>{viewingProfile.user.age} yrs &bull; {viewingProfile.user.gender}</span>
-              </div>
-              <div style={{ background: 'white', borderRadius: '12px', padding: '0.8rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Height</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>{viewingProfile.height || 'N/A'}</span>
-              </div>
-              <div style={{ background: 'white', borderRadius: '12px', padding: '0.8rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Religion / Caste</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>{viewingProfile.religion} ({viewingProfile.caste || 'No Caste'})</span>
-              </div>
-              <div style={{ background: 'white', borderRadius: '12px', padding: '0.8rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600 }}>Marital Status</span>
-                <span style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--text-dark)' }}>{viewingProfile.marital_status}</span>
-              </div>
-            </div>
-
-            <div style={{ background: 'white', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-              <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600, marginBottom: '4px' }}>Education & Occupation</span>
-              <div style={{ fontSize: '0.88rem', color: 'var(--text-dark)', fontWeight: 600 }}>{viewingProfile.education}</div>
-              <div style={{ fontSize: '0.82rem', color: 'var(--text-medium)', marginTop: '2px' }}>{viewingProfile.occupation}</div>
-            </div>
-
-            {viewingProfile.about_me && (
-              <div style={{ background: 'white', borderRadius: '12px', padding: '1rem', border: '1px solid rgba(128,10,63,0.04)' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--text-light)', textTransform: 'uppercase', display: 'block', fontWeight: 600, marginBottom: '4px' }}>About Me</span>
-                <p style={{ fontSize: '0.85rem', color: 'var(--text-medium)', margin: 0, lineHeight: 1.5, whiteSpace: 'pre-line' }}>{viewingProfile.about_me}</p>
-              </div>
-            )}
-
-            <button
-              onClick={() => {
-                handleUnmatch(viewingProfile.user.id);
-                setViewingProfile(null);
-              }}
-              style={{
-                width: '100%',
-                padding: '12px',
-                borderRadius: '12px',
-                backgroundColor: 'rgba(178,59,68,0.08)',
-                color: '#B23B44',
-                border: 'none',
-                fontWeight: 700,
-                fontSize: '0.9rem',
-                cursor: 'pointer',
-                transition: 'background-color 0.2s',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px'
-              }}
-              onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(178,59,68,0.15)'}
-              onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(178,59,68,0.08)'}
-            >
-              <HeartCrack size={16} /> Unmatch Profile
-            </button>
-          </div>
-        </div>
-      </div>
+        }
+      />
     );
   };
 
@@ -946,7 +862,7 @@ export const Chats: React.FC = () => {
                 }}>
                   <div style={{ width: '40px', height: '40px', borderRadius: '50%', overflow: 'hidden', background: '#ccc', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                     {myProfile && myProfile.profile_photo ? (
-                      <img src={`${API_URL}${myProfile.profile_photo}`} alt="My profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={getProfilePhoto(myProfile.profile_photo)} alt="My profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : (
                       <div style={{ fontSize: '0.9rem', fontWeight: 700, color: 'var(--primary-burgundy)' }}>
                         {user ? getInitials(user.first_name, user.last_name) : 'ME'}
@@ -1053,7 +969,7 @@ export const Chats: React.FC = () => {
                       <MessageCircleHeart size={80} style={{ strokeWidth: 1 }} />
                     </div>
                     <h2 style={{ fontFamily: 'var(--font-serif)', fontSize: '2rem', color: '#41525d', margin: '0 0 10px 0', fontWeight: 300 }}>
-                      Saaथी Web
+                      Natejulva
                     </h2>
                     <p style={{ fontSize: '0.88rem', color: '#667781', maxWidth: '480px', margin: '0 0 2rem 0', lineHeight: 1.6 }}>
                       Send and receive messages to your mutual connections. Messages are fully secure.

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import { API_URL } from '../config';
+import { useDialog } from '../context/DialogContext';
 
 interface ProfileDetails {
   id: number;
@@ -47,6 +48,7 @@ interface User {
 export const AdminUserManagement: React.FC = () => {
   const navigate = useNavigate();
   const { adminToken } = useAdminAuth();
+  const { showLoading, hideLoading, showAlert, showConfirm } = useDialog();
   
   // State variables
   const [users, setUsers] = useState<User[]>([]);
@@ -100,36 +102,45 @@ export const AdminUserManagement: React.FC = () => {
   };
 
   const handleToggleStatus = async (user: User) => {
+    showLoading(user.is_active ? "Suspending user..." : "Activating user...");
     try {
       const response = await axios.post(`${API_URL}/api/auth/admin/users/${user.id}/toggle-status/`, {}, {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
+      hideLoading();
       
       setUsers(users.map(u => u.id === user.id ? { ...u, is_active: response.data.is_active } : u));
       if (selectedUser && selectedUser.id === user.id) {
         setSelectedUser({ ...selectedUser, is_active: response.data.is_active });
       }
+      showAlert("Success", `User account ${response.data.is_active ? 'activated' : 'suspended'} successfully.`);
     } catch (err) {
-      alert('Error toggling user suspension status.');
+      hideLoading();
+      showAlert('Error', 'Error toggling user suspension status.');
     }
   };
 
   const handleDeleteUser = async (userId: number) => {
-    if (!window.confirm('Are you absolutely sure you want to permanently delete this user account? All associated profile preferences and data will be destroyed.')) {
-      return;
-    }
-
-    try {
-      await axios.delete(`${API_URL}/api/auth/admin/users/${userId}/`, {
-        headers: { 'Authorization': `Token ${adminToken}` }
-      });
-      
-      alert('User deleted successfully.');
-      setIsViewModalOpen(false);
-      fetchUsers();
-    } catch (err) {
-      alert('Error deleting user account.');
-    }
+    showConfirm(
+      'Delete Account',
+      'Are you absolutely sure you want to permanently delete this user account? All associated profile preferences and data will be destroyed.',
+      async () => {
+        showLoading("Deleting user account...");
+        try {
+          await axios.delete(`${API_URL}/api/auth/admin/users/${userId}/`, {
+            headers: { 'Authorization': `Token ${adminToken}` }
+          });
+          hideLoading();
+          
+          showAlert('Success', 'User deleted successfully.');
+          setIsViewModalOpen(false);
+          fetchUsers();
+        } catch (err) {
+          hideLoading();
+          showAlert('Error', 'Error deleting user account.');
+        }
+      }
+    );
   };
 
   const openEditModal = (user: User) => {
@@ -147,6 +158,7 @@ export const AdminUserManagement: React.FC = () => {
     e.preventDefault();
     if (!selectedUser) return;
 
+    showLoading("Saving changes...");
     try {
       const response = await axios.patch(`${API_URL}/api/auth/admin/users/${selectedUser.id}/`, {
         first_name: editFirstName,
@@ -159,14 +171,16 @@ export const AdminUserManagement: React.FC = () => {
         headers: { 'Authorization': `Token ${adminToken}` }
       });
 
-      alert('User updated successfully.');
+      hideLoading();
+      showAlert('Success', 'User updated successfully.');
       setIsEditModalOpen(false);
       setUsers(users.map(u => u.id === selectedUser.id ? response.data : u));
     } catch (err: any) {
+      hideLoading();
       if (err.response && err.response.data) {
-        alert(JSON.stringify(err.response.data));
+        showAlert('Error', JSON.stringify(err.response.data));
       } else {
-        alert('Error updating user.');
+        showAlert('Error', 'Error updating user.');
       }
     }
   };

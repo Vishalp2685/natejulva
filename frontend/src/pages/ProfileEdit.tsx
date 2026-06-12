@@ -9,10 +9,94 @@ import {
   Save, CheckCircle, HeartHandshake, ArrowRight
 } from 'lucide-react';
 import { API_URL } from '../config';
+import { SearchableSelect } from '../components/SearchableSelect';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SectionKey = 'personal' | 'professional' | 'additional' | 'preferences';
+
+const RELIGION_OPTIONS = [
+  'Hindu', 'Muslim', 'Christian', 'Sikh', 'Buddhist', 'Jain',
+  'Zoroastrian', 'Jewish', 'Spiritual', 'Atheist', 'Agnostic',
+  'Other', 'Prefer Not to Say'
+];
+
+const BLOOD_GROUP_OPTIONS = [
+  'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-', 'Unknown', 'Prefer Not to Say'
+];
+
+const CASTE_MAPPING: Record<string, string[]> = {
+  'Hindu': ['Brahmin', 'Kshatriya', 'Vaishya', 'Shudra', 'Jat', 'Rajput', 'Maratha', 'General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'],
+  'Muslim': ['Sunni', 'Shia', 'General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'],
+  'Christian': ['Catholic', 'Protestant', 'Orthodox', 'General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'],
+  'Sikh': ['Jat', 'Khatri', 'Arora', 'Ramgarhia', 'General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'],
+  'Jain': ['Digambara', 'Shvetambara', 'General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'],
+};
+
+const DEFAULT_CASTES = ['General', 'OBC', 'SC', 'ST', 'Other', 'Prefer Not to Say'];
+
+const EDUCATION_LEVEL_OPTIONS = [
+  '10th Pass',
+  '12th Pass',
+  'ITI',
+  'Diploma',
+  'Undergraduate (Pursuing)',
+  "Bachelor's Degree (B.A., B.Com., B.Sc., B.E./B.Tech, BBA, BCA, etc.)",
+  'Postgraduate (Pursuing)',
+  "Master's Degree (M.A., M.Com., M.Sc., M.E./M.Tech, MBA, MCA, etc.)",
+  'M.Phil.',
+  'Ph.D.',
+  'Other'
+];
+
+const OCCUPATION_CATEGORY_OPTIONS = [
+  'Student',
+  'Software Engineer / Developer',
+  'Teacher / Professor',
+  'Doctor',
+  'Nurse',
+  'Pharmacist',
+  'Lawyer',
+  'Chartered Accountant',
+  'Banker',
+  'Government Employee',
+  'Business Owner',
+  'Entrepreneur',
+  'Farmer',
+  'Sales Professional',
+  'Marketing Professional',
+  'Designer',
+  'Architect',
+  'Civil Engineer',
+  'Mechanical Engineer',
+  'Electrical Engineer',
+  'Data Analyst',
+  'Data Scientist',
+  'Consultant',
+  'Police / Defense Personnel',
+  'Content Creator',
+  'Freelancer',
+  'Homemaker',
+  'Skilled Worker / Technician',
+  'Retired',
+  'Unemployed',
+  'Other'
+];
+
+const ANNUAL_SALARY_RANGE_OPTIONS = [
+  'Prefer Not to Say',
+  'Below ₹2 LPA',
+  '₹2–4 LPA',
+  '₹4–6 LPA',
+  '₹6–8 LPA',
+  '₹8–12 LPA',
+  '₹12–18 LPA',
+  '₹18–25 LPA',
+  '₹25–40 LPA',
+  '₹40–60 LPA',
+  '₹60 LPA–₹1 Crore',
+  'Above ₹1 Crore'
+];
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -30,20 +114,86 @@ export const ProfileEdit: React.FC = () => {
   const [nextLoading, setNextLoading] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  // Personal Information
-  const [height, setHeight] = useState(cachedProfile?.height || '');
-  const [religion, setReligion] = useState(cachedProfile?.religion || '');
-  const [caste, setCaste] = useState(cachedProfile?.caste || '');
+  // Helper functions for height parsing & conversion
+  const cmToFtIn = (cmVal: number) => {
+    const totalInches = cmVal / 2.54;
+    const feet = Math.floor(totalInches / 12);
+    const inches = Math.round(totalInches % 12);
+    return { feet: feet.toString(), inches: inches.toString() };
+  };
+
+  const parseFeetInches = (str: string) => {
+    const match = str.match(/(\d+)\s*'\s*(\d+)?/);
+    if (match) {
+      return { feet: match[1], inches: match[2] || '0' };
+    }
+    return { feet: '5', inches: '7' };
+  };
+
+  const ftInToCm = (ft: number, inch: number) => {
+    return Math.round((ft * 30.48) + (inch * 2.54));
+  };
+
+  const getInitialHeight = () => {
+    const raw = cachedProfile?.height;
+    if (!raw) return { opt: 'ft', ft: '5', in: '7', cm: '170' };
+    const num = parseInt(raw);
+    if (!isNaN(num) && num >= 100) {
+      const { feet, inches } = cmToFtIn(num);
+      return { opt: 'cm', ft: feet, in: inches, cm: num.toString() };
+    }
+    const { feet, inches } = parseFeetInches(raw);
+    const computedCm = ftInToCm(parseInt(feet), parseInt(inches));
+    return { opt: 'ft', ft: feet, in: inches, cm: computedCm.toString() };
+  };
+
+  const initHeight = getInitialHeight();
+  const [heightOption, setHeightOption] = useState<'ft' | 'cm'>(initHeight.opt as any);
+  const [heightFeet, setHeightFeet] = useState(initHeight.ft);
+  const [heightInches, setHeightInches] = useState(initHeight.in);
+  const [heightCm, setHeightCm] = useState(initHeight.cm);
+
+  const [religionCategory, setReligionCategory] = useState(
+    cachedProfile?.religion_category || 
+    (RELIGION_OPTIONS.includes(cachedProfile?.religion) ? cachedProfile?.religion : (cachedProfile?.religion ? 'Other' : '')) || 
+    ''
+  );
+  const [religionOther, setReligionOther] = useState(
+    cachedProfile?.religion_other || 
+    (RELIGION_OPTIONS.includes(cachedProfile?.religion) ? '' : (cachedProfile?.religion || '')) || 
+    ''
+  );
+
+  const activeReligion = religionCategory;
+  const allowedCastes = CASTE_MAPPING[activeReligion] || DEFAULT_CASTES;
+
+  const [casteCategory, setCasteCategory] = useState(
+    cachedProfile?.caste_category || 
+    (allowedCastes.includes(cachedProfile?.caste) ? cachedProfile?.caste : (cachedProfile?.caste ? 'Other' : '')) || 
+    ''
+  );
+  const [casteOther, setCasteOther] = useState(
+    cachedProfile?.caste_other || 
+    (allowedCastes.includes(cachedProfile?.caste) ? '' : (cachedProfile?.caste || '')) || 
+    ''
+  );
+
   const [maritalStatus, setMaritalStatus] = useState<'Unmarried' | 'Divorced'>(cachedProfile?.marital_status || 'Unmarried');
   const [bloodGroup, setBloodGroup] = useState(cachedProfile?.blood_group || '');
   const [city, setCity] = useState(cachedProfile?.city || '');
   const [hometown, setHometown] = useState(cachedProfile?.hometown || '');
 
   // Professional Information
-  const [education, setEducation] = useState(cachedProfile?.education || '');
-  const [occupation, setOccupation] = useState(cachedProfile?.occupation || '');
+  const initialEducationLevel = cachedProfile?.education_level || (EDUCATION_LEVEL_OPTIONS.includes(cachedProfile?.education) ? cachedProfile?.education : '') || '';
+  const initialOccupationCategory = cachedProfile?.occupation_category || (OCCUPATION_CATEGORY_OPTIONS.includes(cachedProfile?.occupation) ? cachedProfile?.occupation : (cachedProfile?.occupation ? 'Other' : '')) || '';
+  const initialOccupationOther = cachedProfile?.occupation_other || (initialOccupationCategory === 'Other' ? cachedProfile?.occupation : '') || '';
+  const initialAnnualSalaryRange = cachedProfile?.annual_salary_range || (ANNUAL_SALARY_RANGE_OPTIONS.includes(cachedProfile?.annual_salary) ? cachedProfile?.annual_salary : '') || '';
+
+  const [educationLevel, setEducationLevel] = useState(initialEducationLevel);
+  const [occupationCategory, setOccupationCategory] = useState(initialOccupationCategory);
+  const [occupationOther, setOccupationOther] = useState(initialOccupationOther);
   const [workingStatus, setWorkingStatus] = useState<'Employed' | 'Self-employed' | 'Business' | 'Unemployed'>(cachedProfile?.working_status || 'Employed');
-  const [annualSalary, setAnnualSalary] = useState(cachedProfile?.annual_salary || '');
+  const [annualSalaryRange, setAnnualSalaryRange] = useState(initialAnnualSalaryRange);
 
   // Additional Information
   const [aboutMe, setAboutMe] = useState(cachedProfile?.about_me || '');
@@ -89,17 +239,48 @@ export const ProfileEdit: React.FC = () => {
       });
 
       if (ok && data) {
-        setHeight(data.height || '');
-        setReligion(data.religion || '');
-        setCaste(data.caste || '');
+        const rawH = data.height;
+        if (rawH) {
+          const num = parseInt(rawH);
+          if (!isNaN(num) && num >= 100) {
+            setHeightCm(num.toString());
+            const { feet, inches } = cmToFtIn(num);
+            setHeightFeet(feet);
+            setHeightInches(inches);
+          } else {
+            const { feet, inches } = parseFeetInches(rawH);
+            setHeightFeet(feet);
+            setHeightInches(inches);
+            setHeightCm(ftInToCm(parseInt(feet), parseInt(inches)).toString());
+          }
+        }
+
+        const fetchedReligionCategory = data.religion_category || (RELIGION_OPTIONS.includes(data.religion) ? data.religion : (data.religion ? 'Other' : '')) || '';
+        const fetchedReligionOther = data.religion_other || (RELIGION_OPTIONS.includes(data.religion) ? '' : (data.religion || '')) || '';
+        
+        const currentAllowedCastes = CASTE_MAPPING[fetchedReligionCategory] || DEFAULT_CASTES;
+        const fetchedCasteCategory = data.caste_category || (currentAllowedCastes.includes(data.caste) ? data.caste : (data.caste ? 'Other' : '')) || '';
+        const fetchedCasteOther = data.caste_other || (currentAllowedCastes.includes(data.caste) ? '' : (data.caste || '')) || '';
+
+        setReligionCategory(fetchedReligionCategory);
+        setReligionOther(fetchedReligionOther);
+        setCasteCategory(fetchedCasteCategory);
+        setCasteOther(fetchedCasteOther);
+
         setMaritalStatus(data.marital_status || 'Unmarried');
         setBloodGroup(data.blood_group || '');
         setCity(data.city || '');
         setHometown(data.hometown || '');
-        setEducation(data.education || '');
-        setOccupation(data.occupation || '');
+        const fetchedEducationLevel = data.education_level || (EDUCATION_LEVEL_OPTIONS.includes(data.education) ? data.education : '') || '';
+        const fetchedOccupationCategory = data.occupation_category || (OCCUPATION_CATEGORY_OPTIONS.includes(data.occupation) ? data.occupation : (data.occupation ? 'Other' : '')) || '';
+        const fetchedOccupationOther = data.occupation_other || (fetchedOccupationCategory === 'Other' ? data.occupation : '') || '';
+        const fetchedAnnualSalaryRange = data.annual_salary_range || (ANNUAL_SALARY_RANGE_OPTIONS.includes(data.annual_salary) ? data.annual_salary : '') || '';
+
+        setEducationLevel(fetchedEducationLevel);
+        setOccupationCategory(fetchedOccupationCategory);
+        setOccupationOther(fetchedOccupationOther);
         setWorkingStatus(data.working_status || 'Employed');
-        setAnnualSalary(data.annual_salary || '');
+        setAnnualSalaryRange(fetchedAnnualSalaryRange);
         setAboutMe(data.about_me || '');
         setFamilyType(data.family_type || 'Nuclear');
         setCompleteness(data.completeness_percentage || 0);
@@ -132,19 +313,30 @@ export const ProfileEdit: React.FC = () => {
   // ─── Validation ─────────────────────────────────────────────────────────────
 
   const validatePersonal = (): string | null => {
-    if (!height.trim()) return 'Height is required in Personal Information.';
-    if (!religion.trim()) return 'Religion is required in Personal Information.';
-    if (!caste.trim()) return 'Caste is required in Personal Information.';
-    if (!bloodGroup.trim()) return 'Blood Group is required in Personal Information.';
+    const heightVal = heightOption === 'cm' 
+      ? parseInt(heightCm) 
+      : ftInToCm(parseInt(heightFeet), parseInt(heightInches));
+      
+    if (isNaN(heightVal) || heightVal < 100 || heightVal > 250) {
+      return 'Height must be a valid number between 100 cm and 250 cm.';
+    }
+    if (!religionCategory) return 'Religion is required in Personal Information.';
+    if (religionCategory === 'Other' && !religionOther.trim()) return 'Please specify your religion since "Other" is selected.';
+    if (!casteCategory) return 'Caste is required in Personal Information.';
+    if (casteCategory === 'Other' && !casteOther.trim()) return 'Please specify your caste since "Other" is selected.';
+    if (!bloodGroup) return 'Blood Group is required in Personal Information.';
     if (!city.trim()) return 'Current City is required in Personal Information.';
     if (!hometown.trim()) return 'Hometown is required in Personal Information.';
     return null;
   };
 
   const validateProfessional = (): string | null => {
-    if (!education.trim()) return 'Highest Education is required in Professional Information.';
-    if (!occupation.trim()) return 'Occupation is required in Professional Information.';
-    if (!annualSalary.trim()) return 'Annual Salary is required in Professional Information.';
+    if (!educationLevel) return 'Highest Education is required in Professional Information.';
+    if (!occupationCategory) return 'Occupation is required in Professional Information.';
+    if (occupationCategory === 'Other' && !occupationOther.trim()) {
+      return 'Please specify your occupation since "Other" is selected.';
+    }
+    if (!annualSalaryRange) return 'Annual Salary is required in Professional Information.';
     return null;
   };
 
@@ -172,20 +364,31 @@ export const ProfileEdit: React.FC = () => {
   // ─── Auto-save Profile (sections 1-3) ──────────────────────────────────────
 
   const saveProfileData = async (): Promise<boolean> => {
+    const finalHeight = heightOption === 'cm' 
+      ? parseInt(heightCm) 
+      : ftInToCm(parseInt(heightFeet), parseInt(heightInches));
+
     const formData = new FormData();
-    formData.append('height', height);
-    formData.append('religion', religion);
-    formData.append('caste', caste);
-    formData.append('marital_status', maritalStatus);
-    formData.append('blood_group', bloodGroup);
+    formData.append('height', finalHeight.toString());
+    formData.append('religion_category', religionCategory);
+    formData.append('religion_other', religionCategory === 'Other' ? religionOther : '');
+    formData.append('caste_category', casteCategory);
+    formData.append('caste_other', casteCategory === 'Other' ? casteOther : '');
     formData.append('city', city);
     formData.append('hometown', hometown);
-    formData.append('education', education);
-    formData.append('occupation', occupation);
-    formData.append('working_status', workingStatus);
-    formData.append('annual_salary', annualSalary);
     formData.append('about_me', aboutMe);
-    formData.append('family_type', familyType);
+    formData.append('occupation_other', occupationCategory === 'Other' ? occupationOther : '');
+
+    // Choice-constrained fields: only append when non-empty to avoid
+    // Django ChoiceField rejecting '' (empty string) with "not a valid choice".
+    if (maritalStatus) formData.append('marital_status', maritalStatus);
+    if (bloodGroup) formData.append('blood_group', bloodGroup);
+    if (educationLevel) formData.append('education_level', educationLevel);
+    if (occupationCategory) formData.append('occupation_category', occupationCategory);
+    if (workingStatus) formData.append('working_status', workingStatus);
+    if (annualSalaryRange) formData.append('annual_salary_range', annualSalaryRange);
+    if (familyType) formData.append('family_type', familyType);
+
     if (photoFile) formData.append('profile_photo', photoFile);
 
     try {
@@ -201,7 +404,11 @@ export const ProfileEdit: React.FC = () => {
         if (data.user) updateUser(data.user);
         return true;
       } else {
-        setMessage({ type: 'error', text: 'Failed to save details. Please check your fields and try again.' });
+        console.error('[ProfileEdit] Save failed. Server errors:', JSON.stringify(data));
+        const errorMsg = data 
+          ? Object.entries(data).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : v}`).join(' | ')
+          : 'Unknown error';
+        setMessage({ type: 'error', text: `Save failed: ${errorMsg}` });
         return false;
       }
     } catch {
@@ -436,7 +643,7 @@ export const ProfileEdit: React.FC = () => {
                 {user?.first_name} {user?.last_name}
               </h2>
               <p style={{ color: 'var(--text-light)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '0.05em', fontWeight: 700, marginBottom: '1.5rem' }}>
-                {occupation || 'Profile Holder'}
+                {((occupationCategory === 'Other' ? occupationOther : occupationCategory) || 'Profile Holder')}
               </p>
 
               <div style={{ borderTop: '1px solid rgba(128,10,63,0.05)', paddingTop: '1rem', display: 'flex', flexDirection: 'column', gap: '0.8rem', textAlign: 'left', fontSize: '0.9rem' }}>
@@ -543,24 +750,94 @@ export const ProfileEdit: React.FC = () => {
                     Provide basic personal traits to introduce yourself to potential matches.
                   </p>
 
-                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Height (e.g. 5'9" or 175 cm) *</label>
-                      <input type="text" className="form-control" placeholder="e.g. 5'9"
-                        value={height} onChange={(e) => setHeight(e.target.value)} />
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                    <div style={{ flex: 1.2, minWidth: '260px', marginBottom: '1.5rem' }}>
+                      <label className="form-label">Height Option *</label>
+                      <div className="gender-tabs" style={{ marginBottom: '0.8rem' }}>
+                        <button type="button"
+                          className={`gender-tab-btn ${heightOption === 'ft' ? 'active' : ''}`}
+                          onClick={() => setHeightOption('ft')}>Feet & Inches</button>
+                        <button type="button"
+                          className={`gender-tab-btn ${heightOption === 'cm' ? 'active' : ''}`}
+                          onClick={() => setHeightOption('cm')}>Centimeters</button>
+                      </div>
+                      
+                      {heightOption === 'ft' ? (
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '-0.5rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <SearchableSelect
+                              label="Feet"
+                              value={heightFeet ? `${heightFeet} ft` : ''}
+                              options={['3 ft', '4 ft', '5 ft', '6 ft', '7 ft', '8 ft']}
+                              onChange={(val) => setHeightFeet(val.split(' ')[0])}
+                              placeholder="Select Feet"
+                              searchable={false}
+                              required
+                            />
+                          </div>
+                          <div style={{ flex: 1 }}>
+                            <SearchableSelect
+                              label="Inches"
+                              value={heightInches !== undefined ? `${heightInches} in` : ''}
+                              options={['0 in', '1 in', '2 in', '3 in', '4 in', '5 in', '6 in', '7 in', '8 in', '9 in', '10 in', '11 in']}
+                              onChange={(val) => setHeightInches(val.split(' ')[0])}
+                              placeholder="Select Inches"
+                              searchable={false}
+                              required
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: '-0.5rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.75rem' }}>Height (cm)</label>
+                          <input 
+                            type="number" 
+                            className="form-control" 
+                            min={100} 
+                            max={250} 
+                            placeholder="e.g. 175"
+                            value={heightCm} 
+                            onChange={(e) => setHeightCm(e.target.value)} 
+                            style={{ height: '53px' }}
+                          />
+                        </div>
+                      )}
                     </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Religion *</label>
-                      <input type="text" className="form-control" placeholder="e.g. Hindu, Sikh"
-                        value={religion} onChange={(e) => setReligion(e.target.value)} />
+                    
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Religion"
+                        value={religionCategory}
+                        options={RELIGION_OPTIONS}
+                        onChange={(val) => {
+                          setReligionCategory(val);
+                          setCasteCategory('');
+                          setCasteOther('');
+                        }}
+                        placeholder="Select Religion"
+                        required
+                      />
                     </div>
                   </div>
 
+                  {religionCategory === 'Other' && (
+                    <div className="form-group" style={{ animation: 'fade-in 0.3s ease', marginTop: '-0.5rem' }}>
+                      <label className="form-label">Specify Religion *</label>
+                      <input type="text" className="form-control" placeholder="Specify your religion"
+                        value={religionOther} onChange={(e) => setReligionOther(e.target.value)} />
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                     <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Caste *</label>
-                      <input type="text" className="form-control" placeholder="e.g. Brahmin, Rajput"
-                        value={caste} onChange={(e) => setCaste(e.target.value)} />
+                      <SearchableSelect
+                        label="Caste"
+                        value={casteCategory}
+                        options={allowedCastes}
+                        onChange={(val) => setCasteCategory(val)}
+                        placeholder="Select Caste"
+                        required
+                      />
                     </div>
                     <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
                       <label className="form-label">Marital Status</label>
@@ -574,11 +851,24 @@ export const ProfileEdit: React.FC = () => {
                     </div>
                   </div>
 
+                  {casteCategory === 'Other' && (
+                    <div className="form-group" style={{ animation: 'fade-in 0.3s ease', marginTop: '-0.5rem' }}>
+                      <label className="form-label">Specify Caste *</label>
+                      <input type="text" className="form-control" placeholder="Specify your caste"
+                        value={casteOther} onChange={(e) => setCasteOther(e.target.value)} />
+                    </div>
+                  )}
+
                   <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
                     <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Blood Group *</label>
-                      <input type="text" className="form-control" placeholder="e.g. B+, O-"
-                        value={bloodGroup} onChange={(e) => setBloodGroup(e.target.value)} />
+                      <SearchableSelect
+                        label="Blood Group"
+                        value={bloodGroup}
+                        options={BLOOD_GROUP_OPTIONS}
+                        onChange={(val) => setBloodGroup(val)}
+                        placeholder="Select Blood Group"
+                        required
+                      />
                     </div>
                     <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
                       <label className="form-label">Current City *</label>
@@ -620,33 +910,64 @@ export const ProfileEdit: React.FC = () => {
                   </p>
 
                   <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Highest Education *</label>
-                      <input type="text" className="form-control" placeholder="e.g. B.Tech / MBA / Medicine"
-                        value={education} onChange={(e) => setEducation(e.target.value)} />
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Highest Education"
+                        value={educationLevel}
+                        options={EDUCATION_LEVEL_OPTIONS}
+                        onChange={(val) => setEducationLevel(val)}
+                        placeholder="Select Education Level"
+                        searchable={true}
+                        required
+                      />
                     </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Occupation *</label>
-                      <input type="text" className="form-control" placeholder="e.g. Senior Software Engineer"
-                        value={occupation} onChange={(e) => setOccupation(e.target.value)} />
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Occupation"
+                        value={occupationCategory}
+                        options={OCCUPATION_CATEGORY_OPTIONS}
+                        onChange={(val) => {
+                          setOccupationCategory(val);
+                          if (val !== 'Other') {
+                            setOccupationOther('');
+                          }
+                        }}
+                        placeholder="Select Occupation"
+                        searchable={true}
+                        required
+                      />
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Working Status</label>
-                      <select className="form-control" value={workingStatus}
-                        onChange={(e) => setWorkingStatus(e.target.value as any)} style={{ height: '53px' }}>
-                        <option value="Employed">Employed</option>
-                        <option value="Self-employed">Self-employed</option>
-                        <option value="Business">Business</option>
-                        <option value="Unemployed">Unemployed</option>
-                      </select>
+                  {occupationCategory === 'Other' && (
+                    <div className="form-group" style={{ animation: 'fade-in 0.3s ease', marginBottom: '1.5rem' }}>
+                      <label className="form-label">Specify Occupation *</label>
+                      <input type="text" className="form-control" placeholder="e.g. Space Researcher, Astrologist"
+                        value={occupationOther} onChange={(e) => setOccupationOther(e.target.value)} />
                     </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Annual Salary (e.g. 15 LPA) *</label>
-                      <input type="text" className="form-control" placeholder="e.g. 12 LPA or ₹1,200,000"
-                        value={annualSalary} onChange={(e) => setAnnualSalary(e.target.value)} />
+                  )}
+
+                  <div style={{ display: 'flex', gap: '1.5rem', flexWrap: 'wrap' }}>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Working Status"
+                        value={workingStatus}
+                        options={['Employed', 'Self-employed', 'Business', 'Unemployed']}
+                        onChange={(val) => setWorkingStatus(val as any)}
+                        placeholder="Select Working Status"
+                        searchable={false}
+                      />
+                    </div>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Annual Salary"
+                        value={annualSalaryRange}
+                        options={ANNUAL_SALARY_RANGE_OPTIONS}
+                        onChange={(val) => setAnnualSalaryRange(val)}
+                        placeholder="Select Salary Range"
+                        searchable={false}
+                        required
+                      />
                     </div>
                   </div>
 
@@ -786,15 +1107,15 @@ export const ProfileEdit: React.FC = () => {
                       <input type="text" className="form-control" placeholder="e.g. 5'6 or any"
                         value={prefHeight} onChange={(e) => setPrefHeight(e.target.value)} />
                     </div>
-                    <div className="form-group" style={{ flex: 1, minWidth: '220px' }}>
-                      <label className="form-label">Preferred Working Status</label>
-                      <select className="form-control" value={prefWorkingStatus}
-                        onChange={(e) => setPrefWorkingStatus(e.target.value)} style={{ height: '53px' }}>
-                        <option value="Employed">Employed</option>
-                        <option value="Self-employed">Self-employed</option>
-                        <option value="Business">Business</option>
-                        <option value="Unemployed">Unemployed</option>
-                      </select>
+                    <div style={{ flex: 1, minWidth: '220px' }}>
+                      <SearchableSelect
+                        label="Preferred Working Status"
+                        value={prefWorkingStatus}
+                        options={['Employed', 'Self-employed', 'Business', 'Unemployed']}
+                        onChange={(val) => setPrefWorkingStatus(val)}
+                        placeholder="Select Working Status"
+                        searchable={false}
+                      />
                     </div>
                   </div>
 
